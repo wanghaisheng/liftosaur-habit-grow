@@ -1,3 +1,4 @@
+1206 app
 # 🏋 Liftosaur: Open-source powerful weight lifting tracker PWA for coders.
 
 * Link: https://www.liftosaur.com
