@@ -4,13 +4,12 @@ import { GroupHeader } from "../groupHeader";
 import { MenuItem } from "../menuItem";
 import { EditProgram } from "../../models/editProgram";
 import { MenuItemEditable } from "../menuItemEditable";
-import { ILoading, IState, updateSettings, updateState } from "../../models/state";
+import { INavCommon, IState, updateSettings, updateState } from "../../models/state";
 import { Button } from "../button";
 import { useState, useCallback, useEffect, useRef } from "preact/hooks";
 import { ModalPublishProgram } from "../modalPublishProgram";
 import { Thunk } from "../../ducks/thunks";
 import { ICustomExercise, IExerciseKind, IMuscle, IProgram, ISettings } from "../../types";
-import { IScreen, Screen } from "../../models/screen";
 import { Surface } from "../surface";
 import { NavbarView } from "../navbar";
 import { Footer2View } from "../footer2";
@@ -21,7 +20,6 @@ import { EditProgramV2PerDay } from "./editProgramV2PerDay";
 import { ILensRecordingPayload, lb } from "lens-shmens";
 import { IPlannerState } from "../../pages/planner/models/types";
 import { EditProgramV2Full } from "./editProgramV2Full";
-import { PlannerToProgram } from "../../models/plannerToProgram";
 import { CollectionUtils } from "../../utils/collection";
 import { ProgramPreviewOrPlayground } from "../programPreviewOrPlayground";
 import { Modal } from "../modal";
@@ -40,18 +38,20 @@ import { IconKebab } from "../icons/iconKebab";
 import { BottomSheetEditProgramV2 } from "../bottomSheetEditProgramV2";
 import { ClipboardUtils } from "../../utils/clipboard";
 import { UrlUtils } from "../../utils/url";
+import { ModalPlannerPictureExport } from "../../pages/planner/components/modalPlannerPictureExport";
+import { ModalPlannerProgramRevisions } from "../../pages/planner/modalPlannerProgramRevisions";
 
 interface IProps {
-  editProgram: IProgram;
+  originalProgram: IProgram;
   plannerState: IPlannerState;
-  programIndex: number;
   helps: string[];
-  screenStack: IScreen[];
+  client: Window["fetch"];
   dispatch: IDispatch;
   adminKey?: string;
   settings: ISettings;
-  loading: ILoading;
   isLoggedIn: boolean;
+  revisions: string[];
+  navCommon: INavCommon;
 }
 
 declare let __HOST__: string;
@@ -85,12 +85,18 @@ export function EditProgramV2(props: IProps): JSX.Element {
   const modalExerciseUi = plannerState.ui.modalExercise;
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [shouldShowBottomSheet, setShouldShowBottomSheet] = useState<boolean>(false);
+  const [shouldShowGenerateImageModal, setShouldShowGenerateImageModal] = useState<boolean>(false);
+  const [isLoadingRevisions, setIsLoadingRevisions] = useState<boolean>(false);
+  const [showRevisions, setShowRevisions] = useState<boolean>(false);
+  const planner = plannerState.current.program.planner!;
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
+  const evaluatedProgram = Program.evaluate(plannerState.current.program, props.settings);
 
   return (
     <Surface
       navbar={
         <NavbarView
-          loading={props.loading}
+          navCommon={props.navCommon}
           dispatch={props.dispatch}
           rightButtons={[
             <button
@@ -102,19 +108,34 @@ export function EditProgramV2(props: IProps): JSX.Element {
             </button>,
           ]}
           helpContent={<HelpEditProgramV2 />}
-          screenStack={props.screenStack}
           title="Edit Program"
         />
       }
-      footer={<Footer2View dispatch={props.dispatch} screen={Screen.current(props.screenStack)} />}
+      footer={<Footer2View navCommon={props.navCommon} dispatch={props.dispatch} />}
       addons={
         <>
           <BottomSheetEditProgramV2
+            isLoadingRevisions={isLoadingRevisions}
+            isLoggedIn={props.isLoggedIn}
             onExportProgramToLink={() => {
               setShouldShowBottomSheet(false);
               props.dispatch(
-                Thunk.generateAndCopyLink(props.editProgram, props.settings, (url) => {
+                Thunk.generateAndCopyLink(props.originalProgram, props.settings, (url) => {
                   alert(`Copied link to the clipboard: ${url}`);
+                })
+              );
+            }}
+            onGenerateProgramImage={() => {
+              setShouldShowBottomSheet(false);
+              setShouldShowGenerateImageModal(true);
+            }}
+            onLoadRevisions={() => {
+              setIsLoadingRevisions(true);
+              props.dispatch(
+                Thunk.fetchRevisions(props.originalProgram.id, () => {
+                  setIsLoadingRevisions(false);
+                  setShowRevisions(true);
+                  setShouldShowBottomSheet(false);
                 })
               );
             }}
@@ -123,27 +144,36 @@ export function EditProgramV2(props: IProps): JSX.Element {
           />
           <ModalPublishProgram
             isHidden={!shouldShowPublishModal}
-            program={props.editProgram}
+            program={props.originalProgram}
             dispatch={props.dispatch}
             onClose={() => {
               setShouldShowPublishModal(false);
             }}
           />
+          {shouldShowGenerateImageModal && (
+            <ModalPlannerPictureExport
+              settings={props.settings}
+              client={props.client}
+              isChanged={false}
+              program={plannerState.current.program}
+              onClose={() => {
+                setShouldShowGenerateImageModal(false);
+              }}
+            />
+          )}
           {plannerState.ui.showPreview && (
             <Modal
+              noPaddings={true}
               isFullWidth={true}
               name="program-preview"
               shouldShowClose={true}
               onClose={() => plannerDispatch(lb<IPlannerState>().pi("ui").p("showPreview").record(false))}
             >
-              <GroupHeader size="large" name="Program Preview" />
+              <div className="mx-4 mt-4">
+                <GroupHeader size="large" name="Program Preview" />
+              </div>
               <ProgramPreviewOrPlayground
-                program={new PlannerToProgram(
-                  props.editProgram.id,
-                  props.editProgram.nextDay,
-                  plannerState.current.program,
-                  props.settings
-                ).convertToProgram()}
+                program={plannerState.current.program}
                 isMobile={true}
                 hasNavbar={false}
                 settings={props.settings}
@@ -177,18 +207,22 @@ export function EditProgramV2(props: IProps): JSX.Element {
                     return;
                   }
                   if (plannerState.fulltext) {
-                    const program = {
-                      name: plannerState.current.program.name,
-                      weeks: PlannerProgram.evaluateText(plannerState.fulltext.text),
+                    const newProgram = {
+                      ...plannerState.current.program,
+                      planner: {
+                        name: plannerState.current.program.name,
+                        weeks: PlannerProgram.evaluateText(plannerState.fulltext.text),
+                      },
                     };
+
                     const newPlannerProgramResult = PlannerProgram.replaceExercise(
-                      program,
+                      newProgram,
                       modalExerciseUi.exerciseKey,
                       exerciseType,
                       props.settings
                     );
                     if (newPlannerProgramResult.success) {
-                      const newText = PlannerProgram.generateFullText(newPlannerProgramResult.data.weeks);
+                      const newText = PlannerProgram.generateFullText(newPlannerProgramResult.data.planner!.weeks);
                       plannerDispatch([lb<IPlannerState>().pi("fulltext").p("text").record(newText)]);
                     } else {
                       alert(newPlannerProgramResult.error);
@@ -204,7 +238,7 @@ export function EditProgramV2(props: IProps): JSX.Element {
                             : ""
                         }`;
                         const newPlannerProgram = EditProgramUiHelpers.changeCurrentInstance(
-                          plannerState.current.program,
+                          planner,
                           { week: focusedExercise.weekIndex + 1, dayInWeek: focusedExercise.dayIndex + 1, day: 1 },
                           modalExerciseUi.fullName,
                           props.settings,
@@ -212,20 +246,20 @@ export function EditProgramV2(props: IProps): JSX.Element {
                             e.fullName = `${e.label ? `${e.label}: ` : ""}${newShortName}`;
                           }
                         );
-                        plannerDispatch([lb<IPlannerState>().p("current").p("program").record(newPlannerProgram)]);
+                        plannerDispatch([lbProgram.record(newPlannerProgram)]);
                       }
                     } else if (modalExerciseUi.change === "duplicate") {
                       const focusedExercise = modalExerciseUi.focusedExercise;
                       const exercise = Exercise.find(exerciseType, props.settings.exercises);
                       if (exercise && modalExerciseUi.fullName) {
                         const newPlannerProgram = EditProgramUiHelpers.duplicateCurrentInstance(
-                          plannerState.current.program,
+                          planner,
                           { week: focusedExercise.weekIndex + 1, dayInWeek: focusedExercise.dayIndex + 1, day: 1 },
                           modalExerciseUi.fullName,
                           exerciseType,
                           props.settings
                         );
-                        plannerDispatch([lb<IPlannerState>().p("current").p("program").record(newPlannerProgram)]);
+                        plannerDispatch([lbProgram.record(newPlannerProgram)]);
                       }
                     } else {
                       const newPlannerProgramResult = PlannerProgram.replaceExercise(
@@ -262,9 +296,7 @@ export function EditProgramV2(props: IProps): JSX.Element {
                             lines.splice(line, 0, exercise.name);
                             return lines.join("\n");
                           })
-                      : lb<IPlannerState>()
-                          .p("current")
-                          .p("program")
+                      : lbProgram
                           .p("weeks")
                           .i(modalExerciseUi.focusedExercise.weekIndex)
                           .p("days")
@@ -275,7 +307,7 @@ export function EditProgramV2(props: IProps): JSX.Element {
                               return exerciseText;
                             }
                             const exercise = Exercise.getById(exerciseType.id, props.settings.exercises);
-                            return exerciseText + `\n${exercise.name} / 1x1`;
+                            return exerciseText + `\n${exercise.name} / 1x1 100${props.settings.units}`;
                           }),
                   ]);
                 }
@@ -309,6 +341,16 @@ export function EditProgramV2(props: IProps): JSX.Element {
                   exercise
                 );
                 updateSettings(props.dispatch, lb<ISettings>().p("exercises").record(exercises));
+                if (exercise) {
+                  const newProgram = Program.changeExerciseName(exercise.name, name, plannerState.current.program, {
+                    ...props.settings,
+                    exercises,
+                  });
+                  window.isUndoing = true;
+                  EditProgram.updateProgram(props.dispatch, newProgram);
+                  plannerDispatch(lbProgram.record(newProgram.planner!));
+                  plannerDispatch(lbProgram.record(newProgram.planner!), "stop-is-undoing");
+                }
                 if (shouldClose) {
                   plannerDispatch(lb<IPlannerState>().p("ui").p("modalExercise").record(undefined));
                 }
@@ -339,28 +381,41 @@ export function EditProgramV2(props: IProps): JSX.Element {
                 if (name && modal != null) {
                   if (modal.dayIndex != null) {
                     plannerDispatch(
-                      lb<IPlannerState>()
-                        .p("current")
-                        .p("program")
-                        .p("weeks")
-                        .i(modal.weekIndex)
-                        .p("days")
-                        .i(modal.dayIndex)
-                        .p("name")
-                        .record(name)
+                      lbProgram.p("weeks").i(modal.weekIndex).p("days").i(modal.dayIndex).p("name").record(name)
                     );
                   } else {
                     plannerDispatch(
-                      lb<IPlannerState>().p("current").p("program").p("weeks").i(modal.weekIndex).p("name").record(name)
+                      lb<IPlannerState>()
+                        .p("current")
+                        .p("program")
+                        .pi("planner")
+                        .p("weeks")
+                        .i(modal.weekIndex)
+                        .p("name")
+                        .record(name)
                     );
                   }
                 }
                 plannerDispatch(lb<IPlannerState>().p("ui").p("editWeekDayModal").record(undefined));
               }}
               onClose={() => plannerDispatch(lb<IPlannerState>().p("ui").p("editWeekDayModal").record(undefined))}
-              plannerProgram={plannerState.current.program}
+              plannerProgram={planner}
               weekIndex={plannerState.ui.editWeekDayModal.weekIndex}
               dayIndex={plannerState.ui.editWeekDayModal.dayIndex}
+            />
+          )}
+          {showRevisions && props.revisions.length > 0 && (
+            <ModalPlannerProgramRevisions
+              programId={props.originalProgram.id}
+              client={props.client}
+              revisions={props.revisions}
+              onClose={() => setShowRevisions(false)}
+              onRestore={(text) => {
+                window.isUndoing = true;
+                const weeks = PlannerProgram.evaluateText(text);
+                plannerDispatch(lbProgram.p("weeks").record(weeks), "stop-is-undoing");
+                setShowRevisions(false);
+              }}
             />
           )}
         </>
@@ -381,11 +436,11 @@ export function EditProgramV2(props: IProps): JSX.Element {
                     }, 3000);
                   };
                   if (props.isLoggedIn) {
-                    const url = UrlUtils.build(`/user/p/${props.editProgram.id}`, __HOST__);
+                    const url = UrlUtils.build(`/user/p/${props.originalProgram.id}`, __HOST__);
                     ClipboardUtils.copy(url.toString());
                     cb();
                   } else {
-                    props.dispatch(Thunk.generateAndCopyLink(props.editProgram, props.settings, cb));
+                    props.dispatch(Thunk.generateAndCopyLink(props.originalProgram, props.settings, cb));
                   }
                 }}
               >
@@ -398,7 +453,7 @@ export function EditProgramV2(props: IProps): JSX.Element {
           <GroupHeader name="Current Program" />
           <MenuItem
             name="Program"
-            value={props.editProgram.name}
+            value={props.originalProgram.name}
             expandValue={true}
             shouldShowRightArrow={true}
             onClick={() => props.dispatch(Thunk.pushScreen("programs"))}
@@ -412,24 +467,27 @@ export function EditProgramV2(props: IProps): JSX.Element {
           <MenuItemEditable
             type="text"
             name="Name:"
-            value={props.editProgram.name}
+            value={props.originalProgram.name}
             onChange={(newValue) => {
               if (newValue) {
-                EditProgram.setName(props.dispatch, props.editProgram, newValue);
-                plannerDispatch(lb<IPlannerState>().p("current").p("program").p("name").record(newValue));
+                EditProgram.setName(props.dispatch, props.originalProgram, newValue);
+                plannerDispatch([
+                  lb<IPlannerState>().p("current").p("program").p("name").record(newValue),
+                  lb<IPlannerState>().p("current").p("program").pi("planner").p("name").record(newValue),
+                ]);
               }
             }}
           />
           <MenuItemEditable
             type="select"
             name="Next Day:"
-            values={Program.getListOfDays(props.editProgram, props.settings)}
-            value={props.editProgram.nextDay.toString()}
+            values={Program.getListOfDays(evaluatedProgram)}
+            value={props.originalProgram.nextDay.toString()}
             onChange={(newValueStr) => {
               const newValue = newValueStr != null ? parseInt(newValueStr, 10) : undefined;
               if (newValue != null && !isNaN(newValue)) {
-                const newDay = Math.max(1, Math.min(newValue, Program.numberOfDays(props.editProgram, props.settings)));
-                EditProgram.setNextDay(props.dispatch, props.editProgram, newDay);
+                const newDay = Math.max(1, Math.min(newValue, Program.numberOfDays(evaluatedProgram)));
+                EditProgram.setNextDay(props.dispatch, props.originalProgram.id, newDay);
               }
             }}
           />
@@ -447,7 +505,7 @@ export function EditProgramV2(props: IProps): JSX.Element {
         <div ref={programEditorRef}>
           {props.plannerState.fulltext != null ? (
             <EditProgramV2Full
-              plannerProgram={plannerState.current.program}
+              plannerProgram={planner}
               ui={plannerState.ui}
               lbUi={lb<IPlannerState>().pi("ui")}
               fulltext={props.plannerState.fulltext}
@@ -457,25 +515,25 @@ export function EditProgramV2(props: IProps): JSX.Element {
           ) : (
             <EditProgramV2PerDay
               state={plannerState}
-              plannerProgram={plannerState.current.program}
+              plannerProgram={planner}
               ui={plannerState.ui}
               settings={props.settings}
               plannerDispatch={plannerDispatch}
               onSave={() => {
                 const newProgram: IProgram = {
-                  ...Program.cleanPlannerProgram(props.editProgram),
-                  planner: props.plannerState.current.program,
+                  ...Program.cleanPlannerProgram(props.originalProgram),
+                  planner: planner,
                 };
                 updateState(props.dispatch, [
                   lb<IState>()
                     .p("storage")
                     .p("programs")
                     .recordModify((programs) => {
-                      return CollectionUtils.setBy(programs, "id", props.editProgram.id, newProgram);
+                      return CollectionUtils.setBy(programs, "id", props.originalProgram.id, newProgram);
                     }),
                   lb<IState>().p("editProgramV2").record(undefined),
                 ]);
-                props.dispatch(Thunk.pullScreen());
+                props.dispatch(Thunk.pushScreen("main", undefined, true));
               }}
             />
           )}

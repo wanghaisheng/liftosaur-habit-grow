@@ -5,10 +5,11 @@ import { Exercise } from "../../../models/exercise";
 import { Weight } from "../../../models/weight";
 import { ISettings } from "../../../types";
 import { ILensDispatch } from "../../../utils/useLensReducer";
-import { IPlannerProgramExercise, IPlannerState } from "../models/types";
+import { IPlannerProgramExerciseUsed, IPlannerState } from "../models/types";
 import { IPlannerEvalResult } from "../plannerExerciseEvaluator";
 import { PlannerGraph } from "../plannerGraph";
 import { PlannerKey } from "../plannerKey";
+import { PlannerProgramExercise } from "../models/plannerProgramExercise";
 
 interface IPlannerExerciseStatsFullProps {
   settings: ISettings;
@@ -42,8 +43,8 @@ export function PlannerExerciseStatsFull(props: IPlannerExerciseStatsFullProps):
     return <></>;
   }
 
-  const intensityGraphData = getIntensityPerWeeks(props.evaluatedWeeks, props.dayIndex, exercise.name);
-  const volumeGraphData = getVolumePerWeeks(props.evaluatedWeeks, props.dayIndex, exercise.name);
+  const intensityGraphData = getIntensityPerWeeks(props.evaluatedWeeks, props.dayIndex, exercise.name, props.settings);
+  const volumeGraphData = getVolumePerWeeks(props.evaluatedWeeks, props.dayIndex, exercise.name, props.settings);
   const intensityKey = JSON.stringify(intensityGraphData);
   const volumeKey = JSON.stringify(volumeGraphData);
 
@@ -110,24 +111,30 @@ export function PlannerExerciseStatsFull(props: IPlannerExerciseStatsFullProps):
 function getIntensityPerWeeks(
   evaluatedWeeks: IPlannerEvalResult[][],
   dayIndex: number,
-  exerciseName: string
+  exerciseName: string,
+  settings: ISettings
 ): [number[], number[]] {
   const data: [number[], number[]] = [[], []];
   for (let weekIndex = 0; weekIndex < evaluatedWeeks.length; weekIndex++) {
     const evaluatedWeek = evaluatedWeeks[weekIndex];
-    let exercise: IPlannerProgramExercise | undefined;
+    let exercise: IPlannerProgramExerciseUsed | undefined;
     const evaluatedDay = evaluatedWeek[dayIndex] as IPlannerEvalResult | undefined;
     if (evaluatedDay?.success) {
-      exercise = evaluatedDay.data.find((e) => e.name === exerciseName);
+      exercise = PlannerProgramExercise.toUsed(
+        evaluatedDay.data.find((e) => e.name === exerciseName && e.exerciseType != null)
+      );
     }
     if (!exercise) {
       continue;
     }
-    const weights = exercise.sets.map((s) => {
-      const weight = s.percentage
-        ? s.percentage * 100
-        : Weight.rpeMultiplier(s.repRange?.maxrep ?? 1, s.rpe ?? 10) * 100;
-      return Number(weight.toFixed(2));
+    const setVariation = PlannerProgramExercise.currentEvaluatedSetVariation(exercise);
+    const weights = setVariation.sets.map((s) => {
+      const weight = Weight.evaluateWeight(
+        s.weight ?? Weight.build(0, settings.units),
+        exercise.exerciseType,
+        settings
+      );
+      return Number(weight.value.toFixed(2));
     });
     data[0].push(weekIndex + 1);
     data[1].push(Math.max(...weights));
@@ -138,28 +145,33 @@ function getIntensityPerWeeks(
 function getVolumePerWeeks(
   evaluatedWeeks: IPlannerEvalResult[][],
   dayIndex: number,
-  exerciseName: string
+  exerciseName: string,
+  settings: ISettings
 ): [number[], number[]] {
   const data: [number[], number[]] = [[], []];
   for (let weekIndex = 0; weekIndex < evaluatedWeeks.length; weekIndex++) {
     const evaluatedWeek = evaluatedWeeks[weekIndex];
-    let exercise: IPlannerProgramExercise | undefined;
+    let exercise: IPlannerProgramExerciseUsed | undefined;
     const evaluatedDay = evaluatedWeek[dayIndex] as IPlannerEvalResult | undefined;
     if (evaluatedDay?.success) {
-      exercise = evaluatedDay.data.find((e) => e.name === exerciseName);
+      exercise = PlannerProgramExercise.toUsed(
+        evaluatedDay.data.find((e) => e.name === exerciseName && e.exerciseType != null)
+      );
     }
     if (!exercise) {
       continue;
     }
+    const setVariation = PlannerProgramExercise.currentEvaluatedSetVariation(exercise);
     const volume = Number(
-      exercise.sets
+      setVariation.sets
         .reduce((acc, s) => {
-          if (!s.repRange) {
-            return acc;
-          }
-          const reps = s.repRange.maxrep;
-          const weight = s.percentage ? s.percentage * 100 : Weight.rpeMultiplier(reps, s.rpe ?? 10) * 100;
-          return acc + s.repRange.numberOfSets * weight * reps;
+          const reps = s.maxrep ?? 0;
+          const weight = Weight.evaluateWeight(
+            s.weight ?? Weight.build(0, settings.units),
+            exercise.exerciseType,
+            settings
+          );
+          return acc + Weight.multiply(weight, reps).value;
         }, 0)
         .toFixed(2)
     );

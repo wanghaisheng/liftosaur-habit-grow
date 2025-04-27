@@ -1,22 +1,37 @@
 import { CollectionUtils } from "../utils/collection";
 
 import { IWeight, IUnit, ISettings, IPlate, IPercentage, IExerciseType } from "../types";
-import { MathUtils } from "../utils/math";
+import { MathUtils, n } from "../utils/math";
 import { Equipment } from "./equipment";
 import { Exercise } from "./exercise";
 
 const prebuiltWeights: Partial<Record<string, IWeight>> = {};
 
 export namespace Weight {
+  export const zero: IWeight = { value: 0, unit: "lb" } as const;
   export function display(weight: IWeight | IPercentage | number, withUnit: boolean = true): string {
     if (typeof weight === "number") {
       return `${weight}`;
     } else if (Weight.isPct(weight)) {
       return `${weight.value}${withUnit ? "%" : ""}`;
     } else {
-      return weight.value === 0
-        ? "BW"
-        : `${parseFloat(weight.value.toFixed(2)).toString()}${withUnit ? ` ${weight.unit}` : ""}`;
+      return `${parseFloat(weight.value.toFixed(2)).toString()}${withUnit ? ` ${weight.unit}` : ""}`;
+    }
+  }
+
+  export function evaluateWeight(
+    weight: IWeight | IPercentage,
+    exerciseType: IExerciseType,
+    settings: ISettings
+  ): IWeight {
+    if (Weight.is(weight)) {
+      return weight;
+    } else if (Weight.isPct(weight)) {
+      const exercise = Exercise.get(exerciseType, settings.exercises);
+      const onerm = Exercise.onerm(exercise, settings);
+      return Weight.multiply(onerm, weight.value / 100);
+    } else {
+      return Weight.build(0, settings.units);
     }
   }
 
@@ -44,12 +59,29 @@ export namespace Weight {
     return unit === "kg" ? "lb" : "kg";
   }
 
-  export function print(weight: IWeight | IPercentage): string {
-    return `${weight.value}${weight.unit}`;
+  export function print(weight: IWeight | IPercentage | number): string {
+    if (typeof weight === "number") {
+      return `${n(weight)}`;
+    } else {
+      return `${n(weight.value)}${weight.unit}`;
+    }
   }
 
-  export function parsePct(str: string): IPercentage | IWeight | undefined {
-    const match = str.match(/^([0-9.]+)%$/);
+  export function printNull(weight: IWeight | IPercentage | number | undefined): string {
+    if (weight == null) {
+      return "";
+    } else if (typeof weight === "number") {
+      return `${n(weight)}`;
+    } else {
+      return `${n(weight.value)}${weight.unit}`;
+    }
+  }
+
+  export function parsePct(str?: string): IPercentage | IWeight | undefined {
+    if (str == null) {
+      return undefined;
+    }
+    const match = str.match(/^([\-+]?[0-9.]+)%$/);
     if (match) {
       return buildPct(MathUtils.roundFloat(parseFloat(match[1]), 2));
     } else {
@@ -58,7 +90,7 @@ export namespace Weight {
   }
 
   export function parse(str: string): IWeight | undefined {
-    const match = str.match(/^([0-9.]+)\s*(kg|lb)$/);
+    const match = str.match(/^([\-+]?[0-9.]+)\s*(kg|lb)$/);
     if (match) {
       return build(MathUtils.roundFloat(parseFloat(match[1]), 2), match[2] as IUnit);
     } else {
@@ -98,6 +130,17 @@ export namespace Weight {
     return build(value.value, value.unit);
   }
 
+  export function isOrPct(object: unknown): object is IWeight | IPercentage {
+    const objWeight = object as IWeight | IPercentage;
+    return (
+      objWeight &&
+      typeof objWeight === "object" &&
+      "unit" in objWeight &&
+      "value" in objWeight &&
+      (objWeight.unit === "kg" || objWeight.unit === "lb" || objWeight.unit === "%")
+    );
+  }
+
   export function is(object: unknown): object is IWeight {
     const objWeight = object as IWeight;
     return (
@@ -131,14 +174,23 @@ export namespace Weight {
     const roundWeight = Weight.round(weight, settings, weight.unit, exerciseType);
     const equipmentData = Equipment.getEquipmentDataForExerciseType(settings, exerciseType);
     if (equipmentData) {
-      const smallestPlate = Equipment.smallestPlate(equipmentData, weight.unit);
-      let newWeight = roundWeight;
-      let attempt = 0;
-      do {
-        newWeight = Weight.add(newWeight, smallestPlate);
-        attempt += 1;
-      } while (attempt < 20 && Weight.eq(Weight.round(newWeight, settings, weight.unit, exerciseType), roundWeight));
-      return newWeight;
+      if (equipmentData.isFixed) {
+        const items = CollectionUtils.sort(equipmentData.fixed, (a, b) => Weight.compare(a, b));
+        const item = items.find((i) => Weight.gt(i, roundWeight));
+        return item ?? items[items.length - 1] ?? roundWeight;
+      } else {
+        const smallestPlate = Weight.multiply(
+          Equipment.smallestPlate(equipmentData, weight.unit),
+          equipmentData.multiplier
+        );
+        let newWeight = roundWeight;
+        let attempt = 0;
+        do {
+          newWeight = Weight.add(newWeight, smallestPlate);
+          attempt += 1;
+        } while (attempt < 20 && Weight.eq(Weight.round(newWeight, settings, weight.unit, exerciseType), roundWeight));
+        return newWeight;
+      }
     } else {
       const rounding = exerciseType ? Exercise.defaultRounding(exerciseType, settings) : 1;
       return Weight.build(roundWeight.value + rounding, roundWeight.unit);
@@ -149,22 +201,32 @@ export namespace Weight {
     const roundWeight = Weight.round(weight, settings, weight.unit, exerciseType);
     const equipmentData = exerciseType ? Equipment.getEquipmentDataForExerciseType(settings, exerciseType) : undefined;
     if (equipmentData) {
-      const smallestPlate = Equipment.smallestPlate(equipmentData, weight.unit);
-      const newWeight = Weight.round(Weight.subtract(roundWeight, smallestPlate), settings, weight.unit, exerciseType);
-      return Weight.build(Math.max(0, newWeight.value), newWeight.unit);
+      if (equipmentData.isFixed) {
+        const items = CollectionUtils.sort(equipmentData.fixed, (a, b) => Weight.compareReverse(a, b));
+        const item = items.find((i) => Weight.lt(i, roundWeight));
+        return item ?? items[items.length - 1] ?? roundWeight;
+      } else {
+        const smallestPlate = Weight.multiply(
+          Equipment.smallestPlate(equipmentData, weight.unit),
+          equipmentData.multiplier
+        );
+        const subtracted = Weight.subtract(roundWeight, smallestPlate);
+        const newWeight = Weight.round(subtracted, settings, weight.unit, exerciseType);
+        return Weight.build(newWeight.value, newWeight.unit);
+      }
     } else {
       const rounding = exerciseType ? Exercise.defaultRounding(exerciseType, settings) : 1;
-      return Weight.build(Math.max(0, roundWeight.value - rounding), roundWeight.unit);
+      return Weight.build(roundWeight.value - rounding, roundWeight.unit);
     }
   }
 
-  export function getOneRepMax(weight: IWeight, reps: number): IWeight {
+  export function getOneRepMax(weight: IWeight, reps: number, rpe?: number): IWeight {
     if (reps === 0) {
       return Weight.build(0, weight.unit);
     } else if (reps === 1) {
       return weight;
     } else {
-      return Weight.roundTo005(Weight.divide(weight, Weight.rpeMultiplier(reps, 10)));
+      return Weight.roundTo005(Weight.divide(weight, Weight.rpeMultiplier(reps, rpe || 10)));
     }
   }
 
@@ -236,19 +298,22 @@ export namespace Weight {
       return { plates: [], platesWeight: allWeight, totalWeight: allWeight };
     }
 
+    const absAllWeight = Weight.abs(allWeight);
+    const inverted = allWeight.value < 0;
     if (equipmentType.isFixed) {
       const fixed = CollectionUtils.sort(
         equipmentType.fixed.filter((w) => w.unit === units),
         (a, b) => b.value - a.value
       );
-      const weight = fixed.find((w) => Weight.lte(w, allWeight)) || fixed[fixed.length - 1] || allWeight;
-      const roundedWeight = roundTo005(weight);
+      const weight = fixed.find((w) => Weight.lte(w, absAllWeight)) || fixed[fixed.length - 1] || absAllWeight;
+      let roundedWeight = roundTo005(weight);
+      roundedWeight = inverted ? Weight.invert(roundedWeight) : roundedWeight;
       return { plates: [], platesWeight: roundedWeight, totalWeight: roundedWeight };
     }
     const availablePlatesArr = equipmentType.plates.filter((p) => p.weight.unit === units);
     const barWeight = equipmentType.bar[units];
     const multiplier = equipmentType.multiplier || 1;
-    const weight = Weight.roundTo005(Weight.subtract(allWeight, barWeight));
+    const weight = Weight.roundTo005(Weight.subtract(absAllWeight, barWeight));
     const availablePlates: IPlate[] = JSON.parse(JSON.stringify(availablePlatesArr));
     availablePlates.sort((a, b) => Weight.compareReverse(a.weight, b.weight));
     const useFastMethod = true;
@@ -261,7 +326,17 @@ export namespace Weight {
         Weight.build(0, allWeight.unit)
       )
     );
-    return { plates, platesWeight: total, totalWeight: Weight.add(total, barWeight) };
+    const totalWeight = inverted ? Weight.invert(Weight.add(total, barWeight)) : Weight.add(total, barWeight);
+    const thePlatesWeight = inverted ? Weight.invert(total) : total;
+    return { plates, platesWeight: thePlatesWeight, totalWeight };
+  }
+
+  export function abs(weight: IWeight): IWeight {
+    return Weight.build(Math.abs(weight.value), weight.unit);
+  }
+
+  export function invert(weight: IWeight): IWeight {
+    return Weight.build(-weight.value, weight.unit);
   }
 
   function calculatePlatesInternal(targetWeight: IWeight, plates: IPlate[], multiplier: number): IPlate[] {
@@ -360,6 +435,21 @@ export namespace Weight {
     return comparison(weight, value, (a, b) => a <= b);
   }
 
+  export function eqNull(
+    weight: IWeight | number | IPercentage | undefined,
+    value: IWeight | number | IPercentage | undefined
+  ): boolean {
+    if (weight == null && value == null) {
+      return true;
+    } else if (weight == null && value != null) {
+      return false;
+    } else if (weight != null && value == null) {
+      return false;
+    } else {
+      return comparison(weight!, value!, (a, b) => a === b);
+    }
+  }
+
   export function eq(weight: IWeight | number | IPercentage, value: IWeight | number | IPercentage): boolean {
     return comparison(weight, value, (a, b) => a === b);
   }
@@ -430,10 +520,12 @@ export namespace Weight {
     } else if (typeof weight !== "number" && typeof value === "number") {
       return o(weight.value, value);
     } else if (typeof weight !== "number" && typeof value !== "number") {
-      if (weight.unit === "%" || value.unit === "%") {
+      if (weight.unit === "%" && value.unit === "%") {
         return o(weight.value, value.value);
-      } else {
+      } else if (Weight.is(weight) && Weight.is(value)) {
         return o(weight.value, convertTo(value, weight.unit).value);
+      } else {
+        return false;
       }
     } else {
       return false;

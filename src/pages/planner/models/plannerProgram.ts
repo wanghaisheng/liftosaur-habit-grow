@@ -13,29 +13,33 @@ import {
   IExerciseType,
   IPlannerProgram,
   IPlannerProgramWeek,
-  IProgramExercise,
+  IProgram,
   ISettings,
 } from "../../../types";
 import { ObjectUtils } from "../../../utils/object";
-import { equipmentName, Exercise } from "../../../models/exercise";
 import { PlannerExerciseEvaluatorText } from "../plannerExerciseEvaluatorText";
 import { IPlannerTopLineItem } from "../plannerExerciseEvaluator";
-import { IExportedProgram, Program } from "../../../models/program";
-import { PlannerNodeName } from "../plannerExerciseStyles";
-import { PlannerKey } from "../plannerKey";
+import { IEvaluatedProgram, IExportedProgram, Program } from "../../../models/program";
 import { PlannerEvaluator } from "../plannerEvaluator";
 import { IWeightChange } from "../../../models/programExercise";
 import { Storage } from "../../../models/storage";
 import { Weight } from "../../../models/weight";
 import { PP } from "../../../models/pp";
 import { IEither } from "../../../utils/types";
+import { getLatestMigrationVersion } from "../../../migrations/migrations";
+import { ProgramToPlanner } from "../../../models/programToPlanner";
+import { PlannerKey } from "../plannerKey";
 import { UidFactory } from "../../../utils/generator";
+import { CollectionUtils } from "../../../utils/collection";
 
 export type IExerciseTypeToProperties = Record<string, (IPlannerProgramProperty & { dayData: Required<IDayData> })[]>;
 export type IExerciseTypeToWarmupSets = Record<string, IPlannerProgramExerciseWarmupSet[] | undefined>;
 
 export class PlannerDayDataError extends Error {
-  constructor(message: string, public readonly dayData: Required<IDayData>) {
+  constructor(
+    message: string,
+    public readonly dayData: Required<IDayData>
+  ) {
     super(message);
   }
 }
@@ -48,115 +52,85 @@ export class PlannerProgram {
     return evaluatedWeeks.every((week) => week.every((day) => day.success));
   }
 
-  public static replaceWeight(programExercise: IProgramExercise, weightChanges: IWeightChange[]): IProgramExercise {
+  public static replaceWeight(
+    program: IEvaluatedProgram,
+    programExerciseId: string,
+    weightChanges: IWeightChange[]
+  ): IEvaluatedProgram {
     if (weightChanges.every((wc) => ObjectUtils.isEqual(wc.originalWeight, wc.weight))) {
-      return programExercise;
+      return program;
     }
-    return {
-      ...programExercise,
-      variations: programExercise.variations.map((variation) => {
-        return {
-          ...variation,
-          sets: variation.sets.map((set) => {
-            const weightChange = weightChanges.find((wc) => Weight.print(wc.originalWeight) === set.weightExpr);
+    const newEvalutedProgram = ObjectUtils.clone(program);
+    PP.iterate2(newEvalutedProgram.weeks, (ex) => {
+      if (ex.key === programExerciseId) {
+        for (const setVariation of ex.evaluatedSetVariations) {
+          for (const set of setVariation.sets) {
+            const weightChange = weightChanges.find((wc) => Weight.eqNull(wc.originalWeight, set.weight));
             if (weightChange != null) {
-              const weightStr = Weight.print(weightChange.weight);
-              return {
-                ...set,
-                weightExpr: weightStr,
-              };
-            } else {
-              return set;
+              set.weight = weightChange.weight;
             }
-          }),
-        };
-      }),
-    };
+          }
+        }
+      }
+    });
+    return newEvalutedProgram;
   }
 
   public static replaceExercise(
-    plannerProgram: IPlannerProgram,
+    program: IProgram,
     key: string,
-    exerciseType: IExerciseType,
-    settings: ISettings,
-    customLabel?: string
-  ): IEither<IPlannerProgram, string> {
-    const conversions: Record<string, string> = {};
-    const exercise = Exercise.get(exerciseType, settings.exercises);
+    toExerciseType: IExerciseType,
+    settings: ISettings
+  ): IEither<IProgram, string> {
+    const evaluatedProgram = Program.evaluate(program, settings);
+    const allExercises = Program.getAllProgramExercises(evaluatedProgram);
+    let labelSuffix: string | undefined = undefined;
+    let noConflicts = false;
 
-    function getNewFullName(oldFullName: string): string {
-      const label = customLabel || PlannerExerciseEvaluator.extractNameParts(oldFullName, settings).label;
-      return `${label ? `${label}: ` : ""}${exercise.name}${
-        exerciseType.equipment != null && exercise.defaultEquipment !== exerciseType.equipment
-          ? `, ${equipmentName(exerciseType.equipment)}`
-          : ""
-      }`;
+    function getLabel(label?: string): string | undefined {
+      return label || labelSuffix ? CollectionUtils.compact([label, labelSuffix]).join("-") : undefined;
     }
 
-    const newPlannerProgram = this.modifyTopLineItems(plannerProgram, settings, (line) => {
-      if (line.type === "exercise") {
-        line.descriptions = line.descriptions?.map((d) => {
-          if (d.match(/^\s*\/+\s*\.\.\./)) {
-            const fullName = d.replace(/^\s*\/+\s*.../, "").trim();
-            const exerciseKey = PlannerKey.fromFullName(fullName, settings);
-            if (exerciseKey === key) {
-              return `// ...${getNewFullName(fullName)}`;
-            }
-          }
-          return d;
-        });
-
-        if (line.value === key && line.fullName) {
-          const newFullName = getNewFullName(line.fullName);
-          conversions[line.fullName] = newFullName;
-          line.fullName = newFullName;
-        }
-        let fakeScript = `E / ${line.sections}`;
-        const fakeTree = plannerExerciseParser.parse(fakeScript);
-        const cursor = fakeTree.cursor();
-        const ranges: [number, number, string][] = [];
-        let newFullName;
-        do {
-          if (cursor.type.name === PlannerNodeName.ExerciseName) {
-            const oldFullname = fakeScript.slice(cursor.node.from, cursor.node.to);
-            const exerciseKey = PlannerKey.fromFullName(oldFullname, settings);
-            if (exerciseKey === key) {
-              newFullName = getNewFullName(oldFullname);
-              ranges.push([cursor.node.from, cursor.node.to, newFullName]);
-            }
-          }
-        } while (cursor.next());
-        if (newFullName) {
-          fakeScript = PlannerExerciseEvaluator.applyChangesToScript(fakeScript, ranges);
-          line.sections = fakeScript.replace(/^E \//, "").trim();
-        }
-      }
-      return line;
-    });
-    const { evaluatedWeeks } = PlannerProgram.evaluate(newPlannerProgram, settings);
-    const errors: [number, number, PlannerSyntaxError][] = [];
-    for (let weekIndex = 0; weekIndex < evaluatedWeeks.length; weekIndex++) {
-      const week = evaluatedWeeks[weekIndex];
-      for (let dayInWeekIndex = 0; dayInWeekIndex < week.length; dayInWeekIndex++) {
-        const day = week[dayInWeekIndex];
-        if (!day.success) {
-          errors.push([weekIndex + 1, dayInWeekIndex + 1, day.error]);
-        }
-      }
-    }
-    if (errors.length > 0) {
-      if (customLabel) {
-        return {
-          success: false,
-          error: `Failed to replace exercise:\n${errors
-            .map(([week, day, error]) => `Week ${week}, Day ${day}: ${error.toString()}`)
-            .join("\n")}`,
-        };
+    while (!noConflicts) {
+      const conflictingExercises = allExercises.filter((e) => {
+        const newKey = PlannerKey.fromExerciseType(toExerciseType, settings, getLabel(e.label));
+        return e.key === newKey;
+      });
+      if (conflictingExercises.length > 0) {
+        noConflicts = false;
+        labelSuffix = UidFactory.generateUid(3);
       } else {
-        return this.replaceExercise(plannerProgram, key, exerciseType, settings, UidFactory.generateUid(3));
+        noConflicts = true;
       }
+    }
+
+    const renameMapping: Record<string, string> = {};
+    PP.iterate2(evaluatedProgram.weeks, (exercise) => {
+      if (exercise.key === key) {
+        exercise.exerciseType = toExerciseType;
+        const newLabel = getLabel(exercise.label);
+        exercise.label = newLabel;
+        const newKey = PlannerKey.fromExerciseType(toExerciseType, settings, newLabel);
+        renameMapping[exercise.key] = newKey;
+        exercise.key = newKey;
+      }
+    });
+    const newPlanner = new ProgramToPlanner(evaluatedProgram, settings).convertToPlanner(renameMapping);
+    const newProgram = { ...program, planner: newPlanner };
+    const { evaluatedWeeks } = PlannerEvaluator.evaluate(newPlanner, settings);
+    let error: PlannerSyntaxError | undefined;
+    for (const week of evaluatedWeeks) {
+      for (const day of week) {
+        if (!day.success) {
+          error = day.error;
+          break;
+        }
+      }
+    }
+    if (error) {
+      return { success: false, error: error.message };
     } else {
-      return { success: true, data: newPlannerProgram };
+      return { success: true, data: newProgram };
     }
   }
 
@@ -274,7 +248,8 @@ export class PlannerProgram {
   public static compact(
     oldPlannerProgram: IPlannerProgram,
     plannerProgram: IPlannerProgram,
-    settings: ISettings
+    settings: ISettings,
+    additionalRepeatingExercises?: Set<string>
   ): IPlannerProgram {
     let dayIndex = 0;
     const repeatingExercises = new Set<string>();
@@ -287,6 +262,22 @@ export class PlannerProgram {
         }
       });
     }
+    for (const ex of additionalRepeatingExercises || []) {
+      repeatingExercises.add(ex);
+    }
+
+    const lastDescriptions: Partial<Record<number, string | undefined>> = {};
+    plannerProgram.weeks.forEach((week) => {
+      week.days.forEach((day, dayInWeekIndex) => {
+        if (lastDescriptions[dayInWeekIndex] == null) {
+          lastDescriptions[dayInWeekIndex] = day.description;
+        } else if (lastDescriptions[dayInWeekIndex] === day.description) {
+          day.description = undefined;
+        } else {
+          lastDescriptions[dayInWeekIndex] = day.description;
+        }
+      });
+    });
 
     const mapping = plannerProgram.weeks.map((week, weekIndex) => {
       return week.days.map((day, dayInWeekIndex) => {
@@ -371,7 +362,7 @@ export class PlannerProgram {
                 }
                 repeatStr = `[${repeatParts.join(",")}]`;
               }
-              str += `${line.fullName}${repeatStr} / ${line.sections}\n`;
+              str += [`${line.fullName}${repeatStr}`, line.sections].filter((r) => r).join(" / ") + `\n`;
             }
           } else if (line.type === "empty") {
             if (!ongoingDescriptions) {
@@ -475,12 +466,14 @@ export class PlannerProgram {
     const evaluator = new PlannerExerciseEvaluatorText(fullProgramText);
     const tree = plannerExerciseParser.parse(fullProgramText);
     const data = evaluator.evaluate(tree.topNode);
-    const weeks = data.map((week) => {
+    const weeks: IPlannerProgramWeek[] = data.map((week) => {
       return {
         name: week.name,
+        description: week.description,
         days: week.days.map((day) => {
           return {
             name: day.name,
+            description: day.description,
             exerciseText: day.exercises.join("").trim(),
           };
         }),
@@ -501,8 +494,22 @@ export class PlannerProgram {
   public static generateFullText(weeks: IPlannerProgramWeek[]): string {
     let fullText = "";
     for (const week of weeks) {
+      if (week.description != null) {
+        fullText +=
+          week.description
+            .split("\n")
+            .map((l) => (l ? `// ${l}` : "//"))
+            .join("\n") + "\n";
+      }
       fullText += `# ${week.name}\n`;
       for (const day of week.days) {
+        if (day.description != null) {
+          fullText +=
+            day.description
+              .split("\n")
+              .map((l) => `// ${l}`)
+              .join("\n") + "\n";
+        }
         fullText += `## ${day.name}\n`;
         fullText += `${day.exerciseText}\n\n`;
       }
@@ -558,6 +565,28 @@ export class PlannerProgram {
       customExercises: planner.settings.exercises,
       version: planner.version,
     };
+  }
+
+  public static buildExportedProgram(
+    id: string,
+    program: IPlannerProgram,
+    settings: ISettings,
+    nextDay?: number
+  ): IExportedProgram {
+    const { evaluatedWeeks } = PlannerProgram.evaluate(program, settings);
+
+    const exportedPlannerProgram: IExportedPlannerProgram = {
+      id,
+      type: "v2",
+      version: getLatestMigrationVersion(),
+      program: program,
+      plannerSettings: settings.planner,
+      settings: {
+        exercises: PlannerProgram.usedExercises(settings.exercises, evaluatedWeeks),
+        timer: settings.timers.workout ?? 0,
+      },
+    };
+    return Program.exportedPlannerProgramToExportedProgram(exportedPlannerProgram, nextDay);
   }
 
   public static async getExportedPlannerProgram(

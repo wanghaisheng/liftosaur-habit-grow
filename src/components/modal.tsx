@@ -1,6 +1,7 @@
 import { h, ComponentChildren, JSX, RefObject } from "preact";
 import { useRef, useEffect } from "preact/hooks";
 import { IconCloseCircleOutline } from "./icons/iconCloseCircleOutline";
+import { createPortal } from "preact/compat";
 
 interface IProps {
   name?: string;
@@ -9,10 +10,12 @@ interface IProps {
   preautofocus?: [RefObject<HTMLElement>, (el: HTMLElement) => void][];
   isHidden?: boolean;
   isFullWidth?: boolean;
+  isFullHeight?: boolean;
   noPaddings?: boolean;
   shouldShowClose?: boolean;
   overflowHidden?: boolean;
   innerClassName?: string;
+  zIndex?: number;
   maxWidth?: string;
   style?: Record<string, string | undefined>;
   onClose?: () => void;
@@ -21,7 +24,7 @@ interface IProps {
 export function Modal(props: IProps): JSX.Element {
   const modalRef = useRef<HTMLElement>();
 
-  let className = "fixed inset-0 flex items-center justify-center";
+  let className = "fixed inset-0 flex items-center justify-center bottom-sticked";
   if (props.isHidden) {
     className += " invisible";
   }
@@ -33,12 +36,12 @@ export function Modal(props: IProps): JSX.Element {
 
   useEffect(() => {
     if (!props.isHidden) {
-      document.body.classList.add("stop-scrolling");
+      document.body.classList.add("stop-scrolling-modal");
     } else {
-      document.body.classList.remove("stop-scrolling");
+      document.body.classList.remove("stop-scrolling-modal");
     }
     return () => {
-      document.body.classList.remove("stop-scrolling");
+      document.body.classList.remove("stop-scrolling-modal");
     };
   }, [props.isHidden]);
 
@@ -54,8 +57,8 @@ export function Modal(props: IProps): JSX.Element {
     }
   }
 
-  return (
-    <section ref={modalRef} className={className} style={{ zIndex: 100 }}>
+  return createPortal(
+    <section ref={modalRef} className={className} style={{ zIndex: props.zIndex ?? 40 }}>
       <div
         data-name="overlay"
         onClick={props.shouldShowClose ? props.onClose : undefined}
@@ -66,9 +69,10 @@ export function Modal(props: IProps): JSX.Element {
         data-cy={`modal${props.name ? `-${props.name}` : ""}`}
         className={`relative z-20 flex flex-col ${props.noPaddings ? "" : "py-6"} bg-white rounded-lg shadow-lg`}
         style={{
-          maxWidth: props.maxWidth ?? "85%",
+          maxWidth: props.maxWidth ?? "92%",
           maxHeight: "90%",
-          width: props.isFullWidth ? "85%" : "auto",
+          width: props.isFullWidth ? "92%" : "auto",
+          height: props.isFullHeight ? "90%" : "auto",
           ...props.style,
         }}
       >
@@ -90,6 +94,7 @@ export function Modal(props: IProps): JSX.Element {
           </button>
         )}
       </div>
-    </section>
+    </section>,
+    document.getElementById("modal")!
   );
 }

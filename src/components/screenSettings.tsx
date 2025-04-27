@@ -8,16 +8,14 @@ import { InternalLink } from "../internalLink";
 import { IUser } from "../models/user";
 import { ClipboardUtils } from "../utils/clipboard";
 import { Share } from "../models/share";
-import { useState } from "preact/hooks";
-import { ILengthUnit, ISettings, ISubscription, IUnit } from "../types";
-import { ILoading } from "../models/state";
+import { useEffect, useState } from "preact/hooks";
+import { ILengthUnit, ISettings, IStats, ISubscription, IUnit } from "../types";
 import { WhatsNew } from "../models/whatsnew";
 import { ImporterStorage } from "./importerStorage";
 import { ImporterProgram } from "./importerProgram";
 import { NavbarView } from "./navbar";
 import { Surface } from "./surface";
 import { Footer2View } from "./footer2";
-import { IScreen, Screen } from "../models/screen";
 import { GroupHeader } from "./groupHeader";
 import { HelpSettings } from "./help/helpSettings";
 import { StringUtils } from "../utils/string";
@@ -28,33 +26,44 @@ import { ModalImportFromOtherApps } from "./modalImportFromOtherApps";
 import { ImporterLiftosaurCsv } from "./importerLiftosaurCsv";
 import { Subscriptions } from "../utils/subscriptions";
 import { HealthSync } from "../lib/healthSync";
+import { INavCommon } from "../models/state";
+import { Stats } from "../models/stats";
+import { Weight } from "../models/weight";
+import { ImagePreloader } from "../utils/imagePreloader";
 
 interface IProps {
   dispatch: IDispatch;
   subscription: ISubscription;
-  screenStack: IScreen[];
+  stats: IStats;
   user?: IUser;
   currentProgramName?: string;
   settings: ISettings;
-  loading: ILoading;
+  navCommon: INavCommon;
 }
 
 export function ScreenSettings(props: IProps): JSX.Element {
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [showImportFromOtherAppsModal, setShowImportFromOtherAppsModal] = useState(false);
+  const currentBodyweight = Stats.getCurrentBodyweight(props.stats);
+  const currentBodyfat = Stats.getCurrentBodyfat(props.stats);
+
+  useEffect(() => {
+    if (Stats.isEmpty(props.stats)) {
+      ImagePreloader.preload(ImagePreloader.dynoflex);
+    }
+  }, []);
 
   return (
     <Surface
       navbar={
         <NavbarView
-          loading={props.loading}
+          navCommon={props.navCommon}
           dispatch={props.dispatch}
           helpContent={<HelpSettings />}
-          screenStack={props.screenStack}
           title="Settings"
         />
       }
-      footer={<Footer2View dispatch={props.dispatch} screen={Screen.current(props.screenStack)} />}
+      footer={<Footer2View navCommon={props.navCommon} dispatch={props.dispatch} />}
       addons={
         <>
           <ModalImportFromOtherApps
@@ -155,6 +164,29 @@ export function ScreenSettings(props: IProps): JSX.Element {
           />
         )}
 
+        <GroupHeader name="My Measurements" topPadding={true} />
+        {currentBodyweight && (
+          <MenuItem
+            name="Bodyweight"
+            value={Weight.print(currentBodyweight)}
+            shouldShowRightArrow={true}
+            onClick={() => props.dispatch(Thunk.pushScreen("measurements", { key: "weight" }))}
+          />
+        )}
+        {currentBodyfat && (
+          <MenuItem
+            name="Bodyfat"
+            value={Weight.print(currentBodyfat)}
+            shouldShowRightArrow={true}
+            onClick={() => props.dispatch(Thunk.pushScreen("measurements", { key: "bodyfat" }))}
+          />
+        )}
+        <MenuItem
+          name="Measurements"
+          shouldShowRightArrow={true}
+          onClick={() => props.dispatch(Thunk.pushScreen("measurements"))}
+        />
+
         <GroupHeader name="Workout" topPadding={true} />
         <MenuItem
           name="Exercises"
@@ -224,6 +256,23 @@ export function ScreenSettings(props: IProps): JSX.Element {
               lensRecording: lb<ISettings>()
                 .p("lengthUnits")
                 .record(newValue as ILengthUnit),
+            });
+          }}
+        />
+        <MenuItemEditable
+          type="select"
+          name="Week starts from:"
+          value={props.settings.startWeekFromMonday ? "true" : "false"}
+          values={[
+            ["false", "Sunday"],
+            ["true", "Monday"],
+          ]}
+          onChange={(newValue) => {
+            props.dispatch({
+              type: "UpdateSettings",
+              lensRecording: lb<ISettings>()
+                .p("startWeekFromMonday")
+                .record(newValue === "true"),
             });
           }}
         />
@@ -330,6 +379,35 @@ export function ScreenSettings(props: IProps): JSX.Element {
             )}
           </>
         )}
+        <GroupHeader name="Appearance" topPadding={true} />
+        <MenuItemWrapper name="text-size">
+          <div className="flex items-center py-2">
+            <div className="mr-2">
+              <span className="text-xs">A</span>
+              <span className="text-lg">A</span>
+            </div>
+            <div className="flex flex-1 leading-none">
+              <input
+                type="range"
+                className="w-full"
+                min="12"
+                max="20"
+                step="2"
+                value={props.settings.textSize ?? "16"}
+                onChange={(e) => {
+                  const valueStr = e.currentTarget.value;
+                  const value = valueStr != null ? parseInt(valueStr) : undefined;
+                  if (value != null && !isNaN(value)) {
+                    props.dispatch({
+                      type: "UpdateSettings",
+                      lensRecording: lb<ISettings>().p("textSize").record(value),
+                    });
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </MenuItemWrapper>
 
         <GroupHeader name="Import / Export" topPadding={true} />
         <div className="ls-export-data">

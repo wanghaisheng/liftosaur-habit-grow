@@ -3,21 +3,23 @@ import { useState } from "preact/hooks";
 import { Button } from "./button";
 import { IDispatch } from "../ducks/types";
 import { Modal } from "./modal";
-import { IHistoryRecord, IPercentage, IProgramExercise, ISettings, IWeight } from "../types";
+import { IHistoryRecord, IPercentage, IProgramState, ISettings, IWeight } from "../types";
 import { GroupHeader } from "./groupHeader";
 import { ObjectUtils } from "../utils/object";
 import { Weight } from "../models/weight";
-import { ProgramExercise } from "../models/programExercise";
 import { InputWeight } from "./inputWeight";
 import { InputNumber } from "./inputNumber";
 import { MathUtils } from "../utils/math";
+import { IByExercise } from "../pages/planner/plannerEvaluator";
+import { PlannerProgramExercise } from "../pages/planner/models/plannerProgramExercise";
+import { IPlannerProgramExercise } from "../pages/planner/models/types";
 
 interface IModalAmrapProps {
   progress: IHistoryRecord;
   dispatch: IDispatch;
   settings: ISettings;
-  programExercise?: IProgramExercise;
-  allProgramExercises: IProgramExercise[];
+  programExercise?: IPlannerProgramExercise;
+  otherStates?: IByExercise<IProgramState>;
   onDone?: () => void;
 }
 
@@ -41,10 +43,10 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
   const [rpeInputValue, setRpeInputValue] = useState<number | undefined>(initialRpe);
 
   const stateMetadata = props.programExercise
-    ? ProgramExercise.getStateMetadata(props.programExercise, props.allProgramExercises) || {}
+    ? PlannerProgramExercise.getStateMetadata(props.programExercise) || {}
     : {};
   const stateMetadataKeys = ObjectUtils.keys(stateMetadata).filter((k) => stateMetadata[k]?.userPrompted);
-  const state = props.programExercise ? ProgramExercise.getState(props.programExercise, props.allProgramExercises) : {};
+  const state = props.programExercise ? PlannerProgramExercise.getState(props.programExercise) : {};
   const initialUserVarInputValues = stateMetadataKeys.reduce<
     Record<keyof typeof stateMetadata, number | IWeight | IPercentage>
   >((memo, k) => {
@@ -66,8 +68,8 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
       weightValue,
       setIndex: setIndex,
       entryIndex: entryIndex,
-      allProgramExercises: props.allProgramExercises,
       programExercise: props.programExercise,
+      otherStates: props.otherStates,
       isAmrap: isAmrap,
       logRpe: logRpe,
       askWeight: askWeight,
@@ -80,7 +82,7 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
 
   return (
     <Modal maxWidth="480px" isHidden={!amrapModal} isFullWidth={true} shouldShowClose={true} onClose={() => onDone()}>
-      <form onSubmit={(e) => e.preventDefault()}>
+      <form className="mx-1 my-4" onSubmit={(e) => e.preventDefault()}>
         {isAmrap && (
           <div className="mb-2">
             <InputNumber
@@ -136,8 +138,8 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
                 const typedValue = Weight.is(previousValue)
                   ? Weight.build(value, previousValue.unit)
                   : Weight.isPct(previousValue)
-                  ? Weight.buildPct(value)
-                  : value;
+                    ? Weight.buildPct(value)
+                    : value;
                 return { ...prev, [key]: typedValue };
               });
             }}
@@ -155,7 +157,7 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
               onDone();
             }}
           >
-            Clear
+            Cancel
           </Button>
           <Button
             name="modal-amrap-submit"
@@ -165,9 +167,11 @@ export function ModalAmrap(props: IModalAmrapProps): JSX.Element {
             className="ls-modal-set-amrap"
             onClick={(e) => {
               e.preventDefault();
-              const amrapValue = isAmrap ? repsInputValue : undefined;
+              const amrapValue = isAmrap ? (repsInputValue ?? 0) : undefined;
               const rpeValue = logRpe ? rpeInputValue : undefined;
-              const weightOrPctValue = askWeight ? weightInputValue : undefined;
+              const weightOrPctValue = askWeight
+                ? (weightInputValue ?? Weight.build(0, props.settings.units))
+                : undefined;
               const weightValue =
                 weightOrPctValue != null && Weight.isPct(weightOrPctValue)
                   ? Weight.build(weightOrPctValue.value, props.settings.units)

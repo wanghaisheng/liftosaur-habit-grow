@@ -49,15 +49,12 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
   const repeatStr = PlannerProgramExercise.repeatToRangeStr(plannerExercise);
   const order = plannerExercise.order !== 0 ? plannerExercise.order : undefined;
   const orderAndRepeat = [order, repeatStr].filter((s) => s).join(", ");
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
 
   const [showMenu, setShowMenu] = useState(false);
   const [showLabel, setShowLabel] = useState(!!plannerExercise.label);
   const [showRepeat, setShowRepeat] = useState(plannerExercise.repeating.length > 0);
   const [showOrder, setShowOrder] = useState(plannerExercise.order !== 0);
-
-  const progress = plannerExercise.properties.find((p) => p.name === "progress");
-  const update = plannerExercise.properties.find((p) => p.name === "update");
 
   function modify(cb: (ex: IPlannerProgramExercise) => void): void {
     props.plannerDispatch(
@@ -229,59 +226,61 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
           </div>
         </div>
       </div>
-      <div className="mb-2 leading-none">
-        <LinkButton
-          name="change-exercise-this-week-day"
-          data-cy="edit-exercise-change-here"
-          className="mr-4 text-xs"
-          onClick={() => {
-            props.plannerDispatch(
-              lb<IPlannerState>().p("ui").p("modalExercise").record({
-                focusedExercise: {
-                  weekIndex,
-                  dayIndex,
-                  exerciseLine,
-                },
-                types: [],
-                muscleGroups: [],
-                exerciseKey,
-                fullName: plannerExercise.fullName,
-                exerciseType,
-                change: "one",
-              })
-            );
-          }}
-        >
-          Change here
-        </LinkButton>
-        <LinkButton
-          name="change-exercise-this-week-day"
-          data-cy="edit-exercise-change-everywhere"
-          className="text-xs"
-          onClick={() => {
-            props.plannerDispatch(
-              lb<IPlannerState>().p("ui").p("modalExercise").record({
-                focusedExercise: {
-                  weekIndex,
-                  dayIndex,
-                  exerciseLine,
-                },
-                types: [],
-                muscleGroups: [],
-                exerciseKey,
-                fullName: plannerExercise.fullName,
-                exerciseType,
-                change: "all",
-              })
-            );
-          }}
-        >
-          Change everywhere
-        </LinkButton>
-      </div>
+      {exerciseType && (
+        <div className="mb-2 leading-none">
+          <LinkButton
+            name="change-exercise-this-week-day"
+            data-cy="edit-exercise-change-here"
+            className="mr-4 text-xs"
+            onClick={() => {
+              props.plannerDispatch(
+                lb<IPlannerState>().p("ui").p("modalExercise").record({
+                  focusedExercise: {
+                    weekIndex,
+                    dayIndex,
+                    exerciseLine,
+                  },
+                  types: [],
+                  muscleGroups: [],
+                  exerciseKey,
+                  fullName: plannerExercise.fullName,
+                  exerciseType,
+                  change: "one",
+                })
+              );
+            }}
+          >
+            Change here
+          </LinkButton>
+          <LinkButton
+            name="change-exercise-this-week-day"
+            data-cy="edit-exercise-change-everywhere"
+            className="text-xs"
+            onClick={() => {
+              props.plannerDispatch(
+                lb<IPlannerState>().p("ui").p("modalExercise").record({
+                  focusedExercise: {
+                    weekIndex,
+                    dayIndex,
+                    exerciseLine,
+                  },
+                  types: [],
+                  muscleGroups: [],
+                  exerciseKey,
+                  fullName: plannerExercise.fullName,
+                  exerciseType,
+                  change: "all",
+                })
+              );
+            }}
+          >
+            Change everywhere
+          </LinkButton>
+        </div>
+      )}
       {showLabel && (
         <label className="flex items-center mb-2">
-          <span className="mr-2">Label:</span>
+          <span className="mr-2 text-sm">Label:</span>
           <input
             data-cy="edit-exercise-label"
             className="w-full p-1 text-sm text-left border rounded border-grayv2-200"
@@ -300,7 +299,7 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
       )}
       {showRepeat && (
         <label className="flex items-center mb-2">
-          <span className="mr-2">Repeat from week {repeatFrom} to week: </span>
+          <span className="mr-2 text-sm">Repeat from week {repeatFrom} to week: </span>
           <select
             value={repeatTo}
             data-cy="edit-exercise-repeat"
@@ -338,7 +337,7 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
       )}
       {showOrder && (
         <div className="flex items-center mb-2">
-          <span className="mr-2">Forced order: </span>
+          <span className="mr-2 text-sm">Forced order: </span>
           <NumInput
             name="edit-exercise-order"
             value={plannerExercise.order}
@@ -358,9 +357,9 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
         plannerExercise={plannerExercise}
         onUpdate={(index) => {
           modify((ex) => {
-            const description = ex.descriptions[index];
+            const description = ex.descriptions.values[index];
             if (description != null) {
-              ex.descriptions.forEach((d) => (d.isCurrent = false));
+              ex.descriptions.values.forEach((d) => (d.isCurrent = false));
               description.isCurrent = true;
             }
           });
@@ -407,7 +406,7 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
           plannerExercise={plannerExercise}
           settings={props.settings}
         />
-        {progress && <EditProgramUiProgress progress={progress} />}
+        <EditProgramUiProgress exercise={plannerExercise} settings={props.settings} />
       </div>
       <div className="my-2">
         <EditProgramUiUpdateReuse
@@ -418,7 +417,7 @@ export function EditProgramV2UiEditExercise(props: IEditProgramV2UiEditExerciseP
           plannerExercise={plannerExercise}
           settings={props.settings}
         />
-        {update && <EditProgramUiUpdate update={update} />}
+        <EditProgramUiUpdate exercise={plannerExercise} settings={props.settings} />
       </div>
       <div className="mt-2 text-xs text-grayv2-main">
         To edit <strong>progress</strong>, <strong>update</strong> scripts, and <strong>tags</strong> - switch to the{" "}

@@ -31,6 +31,8 @@ import { lb } from "lens-shmens";
 import { updateSettings } from "../models/state";
 import { ObjectUtils } from "../utils/object";
 import { Settings } from "../models/settings";
+import { Program } from "../models/program";
+import { EditProgram } from "../models/editProgram";
 
 interface IExercisesListProps {
   dispatch: IDispatch;
@@ -60,15 +62,16 @@ function buildExercises(exerciseTypes: IExerciseType[], settings: ISettings): IE
 }
 
 export function ExercisesList(props: IExercisesListProps): JSX.Element {
+  const evaluatedProgram = Program.evaluate(props.program, props.settings);
   const textInput = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState<string>("");
   const [filterTypes, setFilterTypes] = useState<string[]>([]);
   const [showCustomExerciseModal, setShowCustomExerciseModal] = useState<boolean>(false);
 
   let programExercises = buildExercises(
-    CollectionUtils.uniqByExpr(props.program.exercises, (e) => Exercise.toKey(e.exerciseType)).map(
-      (e) => e.exerciseType
-    ),
+    CollectionUtils.uniqByExpr(Program.getAllUsedProgramExercises(evaluatedProgram), (e) =>
+      Exercise.toKey(e.exerciseType)
+    ).map((e) => e.exerciseType),
     props.settings
   );
   const programExercisesKeys = new Set(programExercises.map((e) => Exercise.toKey(e)));
@@ -137,7 +140,7 @@ export function ExercisesList(props: IExercisesListProps): JSX.Element {
           onChange={(ft) => setFilterTypes(Array.from(ft))}
         />
       </form>
-      <div className="text-right">
+      <div className="text-sm text-right">
         <LinkButton name="create-custom-exercise" onClick={() => setShowCustomExerciseModal(true)}>
           Create custom exercise
         </LinkButton>
@@ -202,6 +205,13 @@ export function ExercisesList(props: IExercisesListProps): JSX.Element {
               exercise
             );
             updateSettings(props.dispatch, lb<ISettings>().p("exercises").record(exercises));
+            if (exercise) {
+              const newProgram = Program.changeExerciseName(exercise.name, name, props.program, {
+                ...props.settings,
+                exercises,
+              });
+              EditProgram.updateProgram(props.dispatch, newProgram);
+            }
             if (shouldClose) {
               setShowCustomExerciseModal(false);
             }

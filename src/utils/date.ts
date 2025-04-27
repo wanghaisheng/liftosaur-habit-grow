@@ -113,26 +113,26 @@ export namespace DateUtils {
     return [year, month, day, hours, minutes, seconds].join("");
   }
 
-  export function firstDayOfWeekTimestamp(date: Date | number): number {
+  export function firstDayOfWeekTimestamp(date: Date | number, startWeekFromMonday?: boolean): number {
     const d = new Date(date);
     let weekDay = d.getDay();
-    if (weekDay === 0) {
+    if (startWeekFromMonday && weekDay === 0) {
       weekDay = 7;
     }
     const currentDay = d.getDate();
-    const beginningOfWeekDay = currentDay - weekDay + 1;
+    const beginningOfWeekDay = currentDay - weekDay + (startWeekFromMonday ? 1 : 0);
     const newDate = new Date(d.getFullYear(), d.getMonth(), beginningOfWeekDay);
     return newDate.getTime();
   }
 
-  export function lastDayOfWeekTimestamp(date: Date | number): number {
+  export function lastDayOfWeekTimestamp(date: Date | number, startWeekFromMonday?: boolean): number {
     const d = new Date(date);
     let weekDay = d.getDay();
-    if (weekDay === 0) {
+    if (startWeekFromMonday && weekDay === 0) {
       weekDay = 7;
     }
     const currentDay = d.getDate();
-    const endOfWeekDay = currentDay + (7 - weekDay);
+    const endOfWeekDay = currentDay + (7 - weekDay) + (startWeekFromMonday ? 1 : 0);
     const newDate = new Date(d.getFullYear(), d.getMonth(), endOfWeekDay, 23, 59, 59);
     return newDate.getTime();
   }
@@ -174,5 +174,22 @@ export namespace DateUtils {
   export function yearAndMonth(date: Date | string | number): [number, number] {
     const d = new Date(date);
     return [d.getUTCFullYear(), d.getUTCMonth()];
+  }
+
+  export function formatRange(start: Date | string | number, end: Date | string | number): string {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (startDate.getFullYear() !== endDate.getFullYear()) {
+      return `${format(startDate, true)} - ${format(endDate, true)}`;
+    } else {
+      if (startDate.getMonth() !== endDate.getMonth()) {
+        const formattedStart = startDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        const formattedEnd = endDate.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        return `${formattedStart} - ${formattedEnd}, ${startDate.getFullYear()}`;
+      } else {
+        const month = startDate.toLocaleDateString(undefined, { month: "short" });
+        return `${month} ${startDate.getDate()}-${endDate.getDate()}, ${startDate.getFullYear()}`;
+      }
+    }
   }
 }

@@ -1,10 +1,9 @@
 import { lb } from "lens-shmens";
 import { JSX, h } from "preact";
 import { PP } from "../../../models/pp";
-import { IPlannerProgramExercise, IPlannerState } from "../../../pages/planner/models/types";
+import { IPlannerProgramExercise, IPlannerState, IProgramExerciseProgress } from "../../../pages/planner/models/types";
 import { IPlannerEvalResult } from "../../../pages/planner/plannerExerciseEvaluator";
 import { IDayData, ISettings } from "../../../types";
-import { CollectionUtils } from "../../../utils/collection";
 import { ILensDispatch } from "../../../utils/useLensReducer";
 import { EditProgramUiHelpers } from "./editProgramUiHelpers";
 
@@ -23,7 +22,7 @@ function getProgressReuseCandidates(fullname: string, evaluatedWeeks: IPlannerEv
     if (exercise.fullName === fullname) {
       return;
     }
-    const progress = exercise.properties.find((p) => p.name === "progress");
+    const progress = exercise.progress;
     if (!progress || progress.reuse) {
       return;
     }
@@ -34,13 +33,13 @@ function getProgressReuseCandidates(fullname: string, evaluatedWeeks: IPlannerEv
 
 export function EditProgramUiProgressReuse(props: IEditProgramUiProgressReuseProps): JSX.Element {
   const plannerExercise = props.plannerExercise;
-  const progress = plannerExercise.properties.find((p) => p.name === "progress");
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const progress = plannerExercise.progress;
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
   const reuseCandidates = getProgressReuseCandidates(plannerExercise.fullName, props.evaluatedWeeks);
 
   return (
     <div>
-      <span className="mr-2">Reuse progress from:</span>
+      <span className="mr-2 text-sm">Reuse progress from:</span>
       <select
         data-cy="edit-exercise-reuse-progress-select"
         onChange={(event) => {
@@ -60,28 +59,38 @@ export function EditProgramUiProgressReuse(props: IEditProgramUiProgressReusePro
                       if (
                         !reusedExercise &&
                         exercise.fullName === value &&
-                        exercise.properties.some((p) => p.name === "progress" && p.fnName !== "none")
+                        exercise.progress &&
+                        exercise.progress.type !== "none"
                       ) {
                         reusedExercise = exercise;
                       }
                     });
                     if (reusedExercise) {
-                      const reusedProgress = reusedExercise.properties.find((p) => p.name === "progress");
+                      const reusedProgress = reusedExercise.progress;
                       if (reusedProgress) {
-                        const newProgress =
-                          reusedProgress.fnName !== "custom"
+                        const newProgress: IProgramExerciseProgress =
+                          reusedProgress.type !== "custom"
                             ? { ...reusedProgress }
                             : {
                                 ...reusedProgress,
                                 script: undefined,
-                                body: value,
+                                reuse: {
+                                  fullName: value,
+                                  exercise: reusedExercise,
+                                },
                               };
-                        ex.properties = CollectionUtils.removeBy(ex.properties, "name", "progress");
-                        ex.properties.push(newProgress);
+                        ex.progress = newProgress;
                       }
                     }
+                  } else if (ex.reuse?.exercise?.progress != null) {
+                    ex.progress = {
+                      state: {},
+                      stateMetadata: {},
+                      type: "custom",
+                      script: "{~ ~}",
+                    };
                   } else {
-                    ex.properties = CollectionUtils.removeBy(ex.properties, "name", "progress");
+                    ex.progress = undefined;
                   }
                 }
               );
@@ -90,8 +99,13 @@ export function EditProgramUiProgressReuse(props: IEditProgramUiProgressReusePro
         }}
       >
         {["", ...reuseCandidates].map((fullName) => {
+          const isSelected =
+            progress?.reuse?.fullName.trim() === fullName.trim() ||
+            (plannerExercise.reuse?.fullName.trim() === fullName.trim() &&
+              plannerExercise.reuse?.exercise?.progress != null &&
+              plannerExercise.progress == null);
           return (
-            <option value={fullName.trim()} selected={progress?.body?.trim() === fullName.trim()}>
+            <option value={fullName.trim()} selected={isSelected}>
               {fullName.trim()}
             </option>
           );

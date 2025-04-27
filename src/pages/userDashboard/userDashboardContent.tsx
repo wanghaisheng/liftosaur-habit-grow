@@ -20,7 +20,7 @@ export interface IUserDashboardData {
 
 export function UserDashboardContent(props: IUserDashboardContentProps): JSX.Element {
   const { userDao, events: allEvents } = props;
-  const userId = userDao ? userDao.id : allEvents[0].userId ?? "";
+  const userId = userDao ? userDao.id : (allEvents[0].userId ?? "");
 
   const groupedEvents = CollectionUtils.groupByExpr(allEvents, (event) => DateUtils.formatYYYYMMDD(event.timestamp));
 
@@ -80,7 +80,9 @@ export function UserDashboardContent(props: IUserDashboardContentProps): JSX.Ele
           const sortedEvents = CollectionUtils.sortBy(events, "timestamp", true);
           return (
             <div key={date}>
-              <h3 className="mt-4 mb-2 text-lg font-bold leading-none">{date}</h3>
+              <h3 className="sticky top-0 left-0 w-full py-2 mt-4 mb-2 text-lg font-bold leading-none bg-white">
+                {date}
+              </h3>
               <ul>
                 {sortedEvents.map((event) => (
                   <li key={event.timestamp} className="mb-2">
@@ -109,6 +111,7 @@ function EventView(props: IEventViewProps): JSX.Element | null {
   if (event.type === "event") {
     return (
       <div>
+        {event.isMobile ? <span className="text-grayv2-main">M </span> : <span className="text-greenv2-main">W </span>}
         <span className="text-grayv2-main">{time}</span>: <span className="">{event.name}</span>
         {event.extra && <span className="ml-2">{JSON.stringify(event.extra)}</span>}
       </div>
@@ -117,6 +120,11 @@ function EventView(props: IEventViewProps): JSX.Element | null {
     return (
       <div>
         <div>
+          {event.isMobile ? (
+            <span className="text-grayv2-main">M </span>
+          ) : (
+            <span className="text-greenv2-main">W </span>
+          )}
           <span className="text-grayv2-main">{time}</span>:{" "}
           {event.rollbar_id && (
             <a
@@ -135,6 +143,7 @@ function EventView(props: IEventViewProps): JSX.Element | null {
   } else if (event.type === "safesnapshot" || event.type === "mergesnapshot") {
     return (
       <div>
+        {event.isMobile ? <span className="text-grayv2-main">M </span> : <span className="text-greenv2-main">W </span>}
         <span className="text-grayv2-main">{time}: </span>
         <span className="">{event.type}: </span>
         <a
@@ -144,6 +153,9 @@ function EventView(props: IEventViewProps): JSX.Element | null {
         >
           {event.storage_id}
         </a>
+        <span className="ml-2">
+          update: <pre>{event.update}</pre>
+        </span>
       </div>
     );
   }

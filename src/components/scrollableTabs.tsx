@@ -10,7 +10,10 @@ interface IProps {
     isInvalid?: boolean;
   }[];
   defaultIndex?: number;
+  shouldNotExpand?: boolean;
   offsetY?: string;
+  topPadding?: string;
+  nonSticky?: boolean;
   onChange?: (index: number) => void;
 }
 
@@ -22,16 +25,23 @@ export function ScrollableTabs(props: IProps): JSX.Element {
     <div className="relative">
       {tabs.length > 1 && (
         <div
-          className="sticky left-0 z-10 bg-white"
-          style={{ top: props.offsetY || "0", marginLeft: "-1rem", marginRight: "-1rem" }}
+          className={`${props.nonSticky ? "" : "sticky"} left-0 z-10 bg-white`}
+          style={{
+            top: props.offsetY || "0",
+            marginLeft: props.shouldNotExpand ? undefined : "-1rem",
+            marginRight: props.shouldNotExpand ? undefined : "-1rem",
+          }}
         >
           <Scroller arrowYOffsetPct={0}>
-            <div className="flex w-full pt-6 pb-2">
+            <div
+              className={`flex w-full ${props.topPadding == null ? "pt-6" : ""} pb-2`}
+              style={{ paddingTop: props.topPadding }}
+            >
               {tabs.map(({ label, isInvalid }, index) => {
                 const nameClass = `tab-${StringUtils.dashcase(label.toLowerCase())}`;
 
                 return (
-                  <div className="flex-1 text-center whitespace-no-wrap border-b border-grayv2-50">
+                  <div className="flex-1 text-center border-b whitespace-nowrap border-grayv2-50">
                     <button
                       className={`ls-${nameClass} inline-block text-base px-4 pb-1 outline-none focus:outline-none ${
                         selectedIndex === index ? "text-orangev2 border-b border-orangev2" : ""

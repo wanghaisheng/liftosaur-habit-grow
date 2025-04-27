@@ -35,7 +35,7 @@ interface IEditProgramUiSetVariationProps {
 export function EditProgramUiSetVariation(props: IEditProgramUiSetVariationProps): JSX.Element {
   const plannerExercise = props.plannerExercise;
   const sets = PlannerProgramExercise.sets(plannerExercise, props.index);
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
 
   function modify(cb: (ex: IPlannerProgramExercise) => void): void {
     if (props.disabled) {
@@ -78,6 +78,7 @@ export function EditProgramUiSetVariation(props: IEditProgramUiSetVariationProps
       )}
       <DraggableList
         hideBorders={true}
+        mode="vertical"
         items={sets}
         element={(set, setIndex, handleTouchStart) => {
           return (
@@ -118,7 +119,8 @@ export function EditProgramUiSetVariation(props: IEditProgramUiSetVariationProps
             onClick={() => {
               modify((ex) => {
                 ex.setVariations[props.index].sets.push({
-                  repRange: { isAmrap: false, isQuickAddSet: false, minrep: 1, maxrep: 1, numberOfSets: 1 },
+                  repRange: { isAmrap: false, isQuickAddSet: false, maxrep: 1, numberOfSets: 1 },
+                  weight: Weight.build(100, props.settings.units),
                 });
               });
             }}
@@ -137,7 +139,7 @@ interface ISetRowProps {
   exerciseType?: IExerciseType;
   index: number;
   isOnlySet: boolean;
-  handleTouchStart: (e: TouchEvent | MouseEvent) => void;
+  handleTouchStart?: (e: TouchEvent | MouseEvent) => void;
   onUpdate: (newSet: IPlannerProgramExerciseSet | undefined) => void;
   settings: ISettings;
 }
@@ -152,8 +154,8 @@ function SetRow(props: ISetRowProps): JSX.Element | null {
   if (!repRange) {
     return null;
   }
-  weight = weight ?? Weight.buildPct(Math.round(Weight.rpeMultiplier(repRange.maxrep, set.rpe ?? 10) * 100));
-  const [showMinReps, setShowMinReps] = useState(repRange.maxrep !== repRange.minrep);
+  weight = weight ?? Weight.buildPct(Math.round(Weight.rpeMultiplier(repRange.maxrep ?? 0, set.rpe ?? 10) * 100));
+  const [showMinReps, setShowMinReps] = useState(repRange.minrep != null);
   const [showRpe, setShowRpe] = useState(set.rpe != null);
   const [showTimer, setShowTimer] = useState(set.timer != null);
   const [showMenu, setShowMenu] = useState(false);
@@ -226,6 +228,8 @@ function SetRow(props: ISetRowProps): JSX.Element | null {
                   data-cy="edit-exercise-set-group-more-toggle-rep-range"
                   onClick={() => {
                     if (showMinReps) {
+                      props.onUpdate({ ...set, repRange: { ...repRange, minrep: undefined } });
+                    } else {
                       props.onUpdate({ ...set, repRange: { ...repRange, minrep: repRange.maxrep } });
                     }
                     setShowMinReps(!showMinReps);
@@ -237,24 +241,22 @@ function SetRow(props: ISetRowProps): JSX.Element | null {
               </DropdownMenu>
             )}
           </div>
-          {!props.isOnlySet && (
-            <div className="ml-2">
-              <button
-                data-cy="edit-exercise-set-delete"
-                className={`px-1 py-2 ${props.disabled ? "opacity-50 cursor-not-allowed nm-set-variation-delete" : ""}`}
-                onClick={() => {
-                  props.onUpdate(undefined);
-                }}
-              >
-                <IconTrash />
-              </button>
-            </div>
-          )}
+          <div className="ml-2">
+            <button
+              data-cy="edit-exercise-set-delete"
+              className={`px-1 py-2 ${props.disabled ? "opacity-50 cursor-not-allowed nm-set-variation-delete" : ""}`}
+              onClick={() => {
+                props.onUpdate(undefined);
+              }}
+            >
+              <IconTrash />
+            </button>
+          </div>
         </div>
       </div>
       {showLabel && (
         <label className="flex items-center">
-          <span className="mr-2">Label:</span>
+          <span className="mr-2 text-sm">Label:</span>
           <input
             className="w-full p-1 text-sm text-center border rounded border-grayv2-200"
             maxLength={8}
@@ -293,9 +295,7 @@ function SetRow(props: ISetRowProps): JSX.Element | null {
               disabled={props.disabled}
               min={0}
               value={repRange.maxrep}
-              onUpdate={(val) =>
-                props.onUpdate({ ...set, repRange: { ...repRange, minrep: val ?? 1, maxrep: val ?? 1 } })
-              }
+              onUpdate={(val) => props.onUpdate({ ...set, repRange: { ...repRange, maxrep: val ?? 1 } })}
             />
           </div>
         )}

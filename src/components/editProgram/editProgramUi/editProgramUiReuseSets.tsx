@@ -53,18 +53,18 @@ export function EditProgramUiReuseSets(props: IEditProgramUiReuseSetsProps): JSX
   const plannerExercise = props.plannerExercise;
   const reuse = plannerExercise.reuse;
   const reuseFullName = reuse?.fullName;
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
   const reuseCandidates = getReuseSetsCandidates(plannerExercise.fullName, props.evaluatedWeeks, props.dayData);
   const reuseCandidate = reuseFullName ? reuseCandidates[reuseFullName] : undefined;
   const isMultipleSetVariations = plannerExercise.setVariations.length > 1;
 
   return (
-    <div>
+    <div className="text-sm">
       {isMultipleSetVariations && (
         <span className="text-xs text-grayv2-main">Cannot reuse sets with set variations enabled</span>
       )}
       <div className={isMultipleSetVariations ? "opacity-50" : ""}>
-        <span className="mr-2">Reuse sets from:</span>
+        <span className="mr-2 text-sm">Reuse sets from:</span>
         <select
           disabled={isMultipleSetVariations}
           data-cy="edit-exercise-reuse-sets-select"
@@ -147,11 +147,11 @@ function ReuseAtWeekDay(props: IReuseAtWeekDayProps): JSX.Element {
   const { reuseCandidate, reuse } = props;
   const reuseCandidateWeeksAndDays = reuseCandidate.weekAndDays;
   const currentWeek = reuseCandidate.weekAndDays[props.dayData.week];
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
   const week = reuse.week;
 
   const day =
-    reuse.exerciseDayInWeek ??
+    reuse.exercise?.dayData.dayInWeek ??
     (week != null || (currentWeek != null && currentWeek.size > 1)
       ? Array.from(reuseCandidate.weekAndDays[week ?? props.dayData.week])[0]
       : undefined);
@@ -227,7 +227,7 @@ function ReuseAtWeekDay(props: IReuseAtWeekDayProps): JSX.Element {
           );
         }}
       >
-        {Array.from(reuseCandidateWeeksAndDays[week ?? reuse.exerciseWeek ?? 0]).map((d) => {
+        {Array.from(reuseCandidateWeeksAndDays[week ?? reuse.exercise?.dayData.week ?? 1]).map((d) => {
           return (
             <option value={d} selected={day === d}>
               {d}

@@ -20,9 +20,9 @@ export function EditProgramUiAllSetVariations(props: IEditProgramUiAllSetVariati
   const plannerExercise = props.plannerExercise;
   const setVariations =
     plannerExercise.setVariations.length === 0
-      ? plannerExercise.reuse?.exercise?.setVariations ?? []
+      ? (plannerExercise.reuse?.exercise?.setVariations ?? [])
       : plannerExercise.setVariations;
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
   const reuse = plannerExercise.reuse;
   let currentSetVariation = plannerExercise.setVariations.findIndex((v) => v.isCurrent) + 1;
   if (currentSetVariation === 0) {
@@ -34,7 +34,7 @@ export function EditProgramUiAllSetVariations(props: IEditProgramUiAllSetVariati
       <GroupHeader name={plannerExercise.setVariations.length > 1 ? "Set Variations" : "Working sets"} />
       {plannerExercise.setVariations.length > 1 && (
         <div className="flex items-center">
-          <span className="mr-2">Current set variation:</span>
+          <span className="mr-2 text-sm">Current set variation:</span>
           <select
             value={currentSetVariation}
             data-cy="edit-exercise-set-variation-index"
@@ -89,7 +89,6 @@ export function EditProgramUiAllSetVariations(props: IEditProgramUiAllSetVariati
                             sets: [
                               {
                                 repRange: {
-                                  minrep: 1,
                                   maxrep: 1,
                                   isAmrap: false,
                                   isQuickAddSet: false,
@@ -151,7 +150,7 @@ export function EditProgramUiAllSetVariations(props: IEditProgramUiAllSetVariati
                       e.setVariations.push({
                         sets: [
                           {
-                            repRange: { minrep: 1, maxrep: 1, isAmrap: false, isQuickAddSet: false, numberOfSets: 1 },
+                            repRange: { maxrep: 1, isAmrap: false, isQuickAddSet: false, numberOfSets: 1 },
                           },
                         ],
                         isCurrent: false,

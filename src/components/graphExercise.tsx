@@ -12,6 +12,7 @@ import { IDispatch } from "../ducks/types";
 import { HtmlUtils } from "../utils/html";
 import { Reps } from "../models/set";
 import { ObjectUtils } from "../utils/object";
+import { History } from "../models/history";
 
 interface IGraphProps {
   history: IHistoryRecord[];
@@ -52,17 +53,22 @@ function getData(
     }
     const entry = i.entries.filter((e) => Exercise.eq(e.exercise, exerciseType))[0];
     if (entry != null) {
-      const maxSet = CollectionUtils.sort(entry.sets, (a, b) => {
-        return !Weight.eq(b.weight, a.weight)
-          ? Weight.compare(b.weight, a.weight)
-          : (b.completedReps || 0) - (a.completedReps || 0);
-      }).find((s) => s.completedReps != null && s.completedReps > 0);
+      const maxSet = History.getMaxWeightSetFromEntry(entry);
+      const maxe1RMSet = History.getMax1RMSetFromEntry(entry);
       const volume = Reps.volume(entry.sets);
       if (maxSet != null) {
-        const convertedWeight = Weight.convertTo(maxSet.weight, settings.units);
+        const convertedWeight = Weight.convertTo(
+          maxSet.completedWeight ?? maxSet.weight ?? Weight.build(0, settings.units),
+          settings.units
+        );
         let onerm = null;
         if (isWithOneRm) {
-          onerm = Weight.getOneRepMax(convertedWeight, maxSet.completedReps || 0).value;
+          const set = maxe1RMSet || maxSet;
+          onerm = Weight.getOneRepMax(
+            Weight.convertTo(set.completedWeight ?? set.weight ?? Weight.build(0, settings.units), settings.units),
+            set.completedReps || 0,
+            set.completedRpe ?? set.rpe ?? 10
+          ).value;
         }
         const timestamp = new Date(Date.parse(i.date)).getTime() / 1000;
         historyRecords[timestamp] = i;
@@ -180,7 +186,7 @@ function GraphExerciseContent(props: IGraphProps & { selectedType: IExerciseSele
                       date
                     )}, <strong>${weight}</strong> ${units}s x <strong>${reps}</strong> reps`;
                     if (props.isWithOneRm && onerm != null) {
-                      text += `, 1RM = <strong>${onerm.toFixed(2)}</strong> ${units}s`;
+                      text += `, e1RM = <strong>${onerm.toFixed(2)}</strong> ${units}s`;
                     }
                     if (historyRecord != null && dispatch) {
                       text += ` <button onclick="window.${graphGoToHistoryRecordFnName}()" class="font-bold underline border-none workout-link text-bluev2 nm-graph-exercise-workout">Workout</button>`;
@@ -201,16 +207,16 @@ function GraphExerciseContent(props: IGraphProps & { selectedType: IExerciseSele
                   return;
                 }
                 text += "</div>";
-                const entryNotes = historyRecord.entries
+                const entryNotes = (historyRecord?.entries || [])
                   .filter((e) => Exercise.eq(props.exercise, e.exercise))
                   .map((e) => e.notes)
                   .filter((e) => e);
-                if (historyRecord.notes || entryNotes.length > 0) {
+                if (historyRecord?.notes || entryNotes.length > 0) {
                   text += "<div class='text-sm text-grayv2-main'>";
                   if (entryNotes.length > 0) {
                     text += `<ul>${entryNotes.map((e) => `<li>${HtmlUtils.escapeHtml(e || "")}</li>`)}</ul>`;
                   }
-                  if (historyRecord.notes) {
+                  if (historyRecord?.notes) {
                     text += `<div><span class='font-bold'>Workout: </span><span>${HtmlUtils.escapeHtml(
                       historyRecord.notes || ""
                     )}</span></div>`;
@@ -218,18 +224,18 @@ function GraphExerciseContent(props: IGraphProps & { selectedType: IExerciseSele
                   text += "</div>";
                 }
 
-                const entries = historyRecord.entries.filter((e) => e.exercise.id === props.exercise.id);
+                const entries = (historyRecord?.entries || []).filter((e) => e.exercise.id === props.exercise.id);
                 const stateVars = [];
                 for (const entry of entries) {
                   for (const key of ObjectUtils.keys(entry.state || {})) {
                     const value = entry.state?.[key];
-                    const displayValue = Weight.is(value) ? Weight.display(value) : value;
+                    const displayValue = Weight.isOrPct(value) ? Weight.display(value) : value;
                     stateVars.push(`${key}: <strong>${displayValue}</strong>`);
                   }
                   for (const key of ObjectUtils.keys(entry.vars || {})) {
                     const name = { rm1: "1 Rep Max" }[key] || key;
                     const value = entry.vars?.[key];
-                    const displayValue = Weight.is(value) ? Weight.display(value) : value;
+                    const displayValue = Weight.isOrPct(value) ? Weight.display(value) : value;
                     stateVars.push(`${name}: <strong>${displayValue}</strong>`);
                   }
                 }
@@ -275,7 +281,7 @@ function GraphExerciseContent(props: IGraphProps & { selectedType: IExerciseSele
           width: 1,
         },
         {
-          label: "1RM",
+          label: "e1RM",
           show: props.isWithOneRm && props.selectedType === "weight",
           value: (self, rawValue) => `${rawValue} ${units}`,
           stroke: "#28839F",

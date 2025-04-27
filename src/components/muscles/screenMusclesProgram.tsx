@@ -3,27 +3,26 @@ import { IDispatch } from "../../ducks/types";
 import { Muscle } from "../../models/muscle";
 import { ScreenMuscles } from "./screenMuscles";
 import { ISettings, IProgram } from "../../types";
-import { ILoading } from "../../models/state";
-import { IScreen } from "../../models/screen";
+import { INavCommon } from "../../models/state";
 import { HelpMuscles } from "../help/helpMuscles";
+import { Program } from "../../models/program";
 
 interface IProps {
   dispatch: IDispatch;
   settings: ISettings;
   program: IProgram;
-  screenStack: IScreen[];
-  loading: ILoading;
+  navCommon: INavCommon;
 }
 
 export function ScreenMusclesProgram(props: IProps): JSX.Element {
-  const points = Muscle.normalizePoints(Muscle.getPointsForProgram(props.program, props.settings));
+  const evaluatedProgram = Program.evaluate(props.program, props.settings);
+  const points = Muscle.normalizePoints(Muscle.getPointsForProgram(evaluatedProgram, props.settings));
   return (
     <ScreenMuscles
       dispatch={props.dispatch}
-      loading={props.loading}
       settings={props.settings}
-      screenStack={props.screenStack}
       points={points}
+      navCommon={props.navCommon}
       title={props.program.name}
       helpContent={<HelpMuscles />}
     />

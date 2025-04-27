@@ -1,8 +1,9 @@
-import { Program } from "./program";
+import { IEvaluatedProgram, IEvaluatedProgramDay, Program } from "./program";
 import { Exercise } from "./exercise";
 import { ObjectUtils } from "../utils/object";
-import { IProgram, ISettings, IProgramDay, IProgramExercise, IMuscle, IDayData, IScreenMuscle } from "../types";
+import { ISettings, IMuscle, IDayData, IScreenMuscle } from "../types";
 import { StringUtils } from "../utils/string";
+import { IPlannerProgramExerciseUsed } from "../pages/planner/models/types";
 
 export type IScreenMusclePointsColl = Partial<Record<IScreenMuscle, number>>;
 
@@ -156,7 +157,7 @@ export namespace Muscle {
     return screenMuscleToMuscleMapping[muscle];
   }
 
-  export function getPointsForProgram(program: IProgram, settings: ISettings): IPoints {
+  export function getPointsForProgram(program: IEvaluatedProgram, settings: ISettings): IPoints {
     const screenMusclePoints: IScreenMusclePoints = {
       strength: {},
       hypertrophy: {},
@@ -166,23 +167,17 @@ export namespace Muscle {
       hypertrophy: {},
     };
 
-    const firstDay = program.days[0];
-    const nextIndex = program.days
-      .slice(1)
-      .findIndex(
-        (d) =>
-          d.exercises === firstDay.exercises &&
-          firstDay.exercises.every((e) => d.exercises.map((ex) => ex.id).indexOf(e.id) !== -1)
-      );
-    const cycle = nextIndex === -1 ? program.days : program.days.slice(nextIndex - 1);
-
-    return cycle.reduce((memo, day) => mergePoints(memo, getPointsForDay(program, day, settings)), {
+    return program.weeks[0].days.reduce((memo, day) => mergePoints(memo, getPointsForDay(program, day, settings)), {
       screenMusclePoints,
       exercisePoints,
     });
   }
 
-  export function getPointsForDay(program: IProgram, programDay: IProgramDay, settings: ISettings): IPoints {
+  export function getPointsForDay(
+    program: IEvaluatedProgram,
+    programDay: IEvaluatedProgramDay,
+    settings: ISettings
+  ): IPoints {
     const screenMusclePoints: IScreenMusclePoints = {
       strength: {},
       hypertrophy: {},
@@ -192,40 +187,35 @@ export namespace Muscle {
       hypertrophy: {},
     };
 
-    return programDay.exercises.reduce(
-      (memo, exerciseId) => {
-        const programExercise = program.exercises.find((e) => e.id === exerciseId.id)!;
-        const dayData = Program.getDayData(program, program.nextDay, settings);
-        return mergePoints(memo, getPointsForExercise(programExercise, program.exercises, dayData, settings));
+    const dayExercises = Program.getProgramDayExercises(programDay);
+    return dayExercises.reduce(
+      (memo, exercise) => {
+        return mergePoints(memo, getPointsForExercise(program, exercise, programDay.dayData, settings));
       },
       { screenMusclePoints, exercisePoints }
     );
   }
 
   export function getUnifiedPointsForDay(
-    program: IProgram,
-    programDay: IProgramDay,
+    program: IEvaluatedProgram,
+    programDay: IEvaluatedProgramDay,
     settings: ISettings
   ): IUnifiedPoints {
     const screenMusclePoints: IScreenMusclePointsColl = {};
     const exercisePoints: IExercisePointsColl = {};
 
-    return programDay.exercises.reduce(
-      (memo, exerciseId) => {
-        const programExercise = program.exercises.find((e) => e.id === exerciseId.id)!;
-        const dayData = Program.getDayData(program, program.nextDay, settings);
-        return mergeUnifiedPoints(
-          memo,
-          getUnifiedPointsForExercise(programExercise, program.exercises, dayData, settings)
-        );
+    const dayExercises = Program.getProgramDayExercises(programDay);
+    return dayExercises.reduce(
+      (memo, exercise) => {
+        return mergeUnifiedPoints(memo, getUnifiedPointsForExercise(program, exercise, programDay.dayData, settings));
       },
       { screenMusclePoints, exercisePoints }
     );
   }
 
   export function getUnifiedPointsForExercise(
-    programExercise: IProgramExercise,
-    allProgramExercises: IProgramExercise[],
+    program: IEvaluatedProgram,
+    programExercise: IPlannerProgramExerciseUsed,
     dayData: IDayData,
     settings: ISettings
   ): IUnifiedPoints {
@@ -233,7 +223,7 @@ export namespace Muscle {
     const exercisePoints: IExercisePointsColl = {};
 
     const id = Exercise.toKey(programExercise.exerciseType);
-    const historyEntry = Program.programExerciseToHistoryEntry(programExercise, allProgramExercises, dayData, settings);
+    const historyEntry = Program.nextHistoryEntry(program, dayData, programExercise, settings);
     const targetMuscles = Exercise.targetMuscles(programExercise.exerciseType, settings.exercises);
     const synergistMuscles = Exercise.synergistMuscles(programExercise.exerciseType, settings.exercises);
     const screenTargetMuscles = Array.from(new Set(targetMuscles.flatMap((t) => muscleToScreenMuscleMapping[t] || [])));
@@ -260,8 +250,8 @@ export namespace Muscle {
   }
 
   export function getPointsForExercise(
-    programExercise: IProgramExercise,
-    allProgramExercises: IProgramExercise[],
+    program: IEvaluatedProgram,
+    programExercise: IPlannerProgramExerciseUsed,
     dayData: IDayData,
     settings: ISettings
   ): IPoints {
@@ -275,7 +265,7 @@ export namespace Muscle {
     };
 
     const id = Exercise.toKey(programExercise.exerciseType);
-    const historyEntry = Program.programExerciseToHistoryEntry(programExercise, allProgramExercises, dayData, settings);
+    const historyEntry = Program.nextHistoryEntry(program, dayData, programExercise, settings);
     const targetMuscles = Exercise.targetMuscles(programExercise.exerciseType, settings.exercises);
     const synergistMuscles = Exercise.synergistMuscles(programExercise.exerciseType, settings.exercises);
     const screenTargetMuscles = Array.from(new Set(targetMuscles.flatMap((t) => muscleToScreenMuscleMapping[t] || [])));
@@ -283,7 +273,7 @@ export namespace Muscle {
       new Set(synergistMuscles.flatMap((t) => muscleToScreenMuscleMapping[t] || []))
     );
     for (const set of historyEntry.sets) {
-      if (set.reps >= 8) {
+      if ((set.reps ?? 0) >= 8) {
         for (const muscle of screenTargetMuscles) {
           screenMusclePoints.hypertrophy[muscle] = screenMusclePoints.hypertrophy[muscle] || 0;
           screenMusclePoints.hypertrophy[muscle]! += 100;

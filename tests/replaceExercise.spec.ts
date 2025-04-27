@@ -35,7 +35,6 @@ Bicep Curl / 1x5`
 
   await page.getByTestId("editor-v2-save-full").click();
   await page.getByTestId("editor-save-v2-top").click();
-  await page.getByTestId("menu-item-my-program").click();
 
   await page.getByTestId("footer-program").click();
   await page.getByTestId("editor-v2-full-program").click();
@@ -48,11 +47,11 @@ Bicep Curl / 1x5`
 
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).first()).toContainText("Squat / 3x8");
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).first()).toContainText(
-    "Bent Over Row, Dumbbell[1-2] / 3x8 / progress: custom() {~ weights = 5lb ~} / update: custom() {~ weights = 5lb ~}"
+    "Bent Over Row, Dumbbell[1-2] / 3x8 / update: custom() {~ weights = 5lb ~} / progress: custom() {~ weights = 5lb ~}"
   );
 
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).nth(1)).toContainText(
-    "Bicep Curl / ...Bent Over Row, Dumbbell / progress: custom() { ...Bent Over Row, Dumbbell } / update: custom() { ...Bent Over Row, Dumbbell }"
+    "Bicep Curl / ...Bent Over Row, Dumbbell"
   );
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).nth(1)).toContainText(
     "t1: Bench Press / 3x5"
@@ -68,8 +67,10 @@ Bicep Curl / 1x5`
   );
 
   await page.getByTestId("editor-save-v2-top").click();
-  await page.getByTestId("start-workout").click();
+  await page.getByTestId("footer-workout").click();
+  await page.getByTestId("bottom-sheet").getByTestId("start-workout").click();
 
+  await page.getByTestId("entry-squat").getByTestId("exercise-options").click();
   await page.getByTestId("exercise-swap").first().click();
 
   await page.getByTestId("modal-exercise").getByTestId("menu-item-squat-dumbbell").click();
@@ -79,7 +80,7 @@ Bicep Curl / 1x5`
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).first()).toContainText("Squat / 3x8");
 
   await page.getByTestId("footer-workout").click();
-  await page.getByTestId("start-workout").click();
+  await page.getByTestId("entry-squat").getByTestId("exercise-options").click();
   await page.getByTestId("exercise-swap").first().click();
 
   page.on("dialog", (dialog) => dialog.accept());
@@ -96,7 +97,7 @@ Bicep Curl / 1x5`
   );
 
   await expect(page.getByTestId("planner-editor").and(page.locator(":visible")).nth(1)).toContainText(
-    "Bicep Curl / ...Bent Over Row, Dumbbell / progress: custom() { ...Bent Over Row, Dumbbell } / update: custom() { ...Bent Over Row, Dumbbell }t1: Bench Press / 3x5"
+    "Bicep Curl / ...Bent Over Row, Dumbbellt1: Bench Press / 3x5"
   );
 
   await page.getByTestId("tab-week-2").click();

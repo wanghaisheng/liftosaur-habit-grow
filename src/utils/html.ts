@@ -80,4 +80,47 @@ export namespace HtmlUtils {
 
     return lastIndex !== index ? html + str.substring(lastIndex, index) : html;
   }
+
+  export function getPointY(event: TouchEvent | MouseEvent): number {
+    if ("touches" in event) {
+      return event.touches[0].clientY;
+    } else {
+      return event.clientY;
+    }
+  }
+
+  export function getPointX(event: TouchEvent | MouseEvent): number {
+    if ("touches" in event) {
+      return event.touches[0].clientX;
+    } else {
+      return event.clientX;
+    }
+  }
+
+  export function onScrollEnd(callback: () => void, element?: HTMLElement): () => void {
+    let lastScrollY = element ? element.scrollTop : window.scrollY;
+    let frame: number;
+
+    const checkScroll = () => {
+      const currentScrollY = element ? element.scrollTop : window.scrollY;
+      if (currentScrollY !== lastScrollY) {
+        lastScrollY = currentScrollY;
+        frame = requestAnimationFrame(checkScroll);
+      } else {
+        // Wait a little more in case it's just a pause
+        setTimeout(() => {
+          if ((element ? element.scrollTop : window.scrollY) === lastScrollY) {
+            callback();
+          } else {
+            lastScrollY = element ? element.scrollTop : window.scrollY;
+            frame = requestAnimationFrame(checkScroll);
+          }
+        }, 100);
+      }
+    };
+
+    frame = requestAnimationFrame(checkScroll);
+
+    return () => cancelAnimationFrame(frame); // optional cancel function
+  }
 }

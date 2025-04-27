@@ -11,7 +11,6 @@ import {
   IUnit,
   IWeight,
   ISettings,
-  IProgram,
   IDayData,
   IScreenMuscle,
   screenMuscles,
@@ -24,6 +23,11 @@ import { IState, updateState } from "./state";
 import { lb, lbu } from "lens-shmens";
 import { ObjectUtils } from "../utils/object";
 import { IDispatch } from "../ducks/types";
+import { SendMessage } from "../utils/sendMessage";
+import memoize from "micro-memoize";
+import { DateUtils } from "../utils/date";
+import { IEvaluatedProgram, Program } from "./program";
+import { PlannerProgramExercise } from "../pages/planner/models/plannerProgramExercise";
 
 export interface IHistoricalEntries {
   last: { entry: IHistoryEntry; time: number };
@@ -33,6 +37,16 @@ export interface IHistoricalEntries {
 export interface IHistoryRecordAndEntry {
   record: IHistoryRecord;
   entry: IHistoryEntry;
+}
+
+// history id -> exercise key -> personal records
+export type IPersonalRecords = Partial<Record<string, Partial<Record<string, IHistoryEntryPersonalRecords>>>>;
+
+export interface IHistoryEntryPersonalRecords {
+  maxWeightSet?: ISet;
+  prevMaxWeightSet?: ISet;
+  max1RMSet?: ISet;
+  prevMax1RMSet?: ISet;
 }
 
 export namespace History {
@@ -59,17 +73,36 @@ export namespace History {
     };
   }
 
-  export function finishProgramDay(progress: IHistoryRecord, settings: ISettings, program?: IProgram): IHistoryRecord {
+  export function finishProgramDay(
+    progress: IHistoryRecord,
+    settings: ISettings,
+    day: number,
+    program?: IEvaluatedProgram
+  ): IHistoryRecord {
     const { deletedProgramExercises, ui, ...historyRecord } = progress;
+    const programDay = program ? Program.getProgramDay(program, day) : undefined;
+    const dayExercises = programDay ? Program.getProgramDayExercises(programDay) : [];
     const updatedAt = Date.now();
+    const endTime = Progress.isCurrent(progress) ? Date.now() : (progress.endTime ?? Date.now());
     return {
       ...historyRecord,
       entries: historyRecord.entries.map((entry) => {
-        const programExercise = program?.exercises.filter((pe) => pe.id === entry.programExerciseId)[0];
+        const programExercise = dayExercises.find((pe) => pe.key === entry.programExerciseId);
         if (Progress.isCurrent(progress)) {
+          entry = {
+            ...entry,
+            updatePrints: undefined,
+            sets: entry.sets.map((set) => {
+              return {
+                ...set,
+                completedReps: set.isCompleted ? set.completedReps : undefined,
+                completedRpe: set.isCompleted ? set.completedRpe : undefined,
+                completedWeight: set.isCompleted ? set.completedWeight : undefined,
+              };
+            }),
+          };
           if (programExercise != null) {
-            const reuseLogicId = programExercise.reuseLogic?.selected;
-            const state = reuseLogicId ? programExercise.reuseLogic?.states[reuseLogicId]! : programExercise.state;
+            const state = PlannerProgramExercise.getState(programExercise);
             const useRm1 = ProgramExercise.isUsingVariable(programExercise, "rm1");
             entry = {
               ...entry,
@@ -80,28 +113,31 @@ export namespace History {
         }
         return entry;
       }),
-      id: Progress.isCurrent(progress) ? progress.startTime : progress.id,
+      id: Progress.isCurrent(progress) ? endTime : progress.id,
       updatedAt: updatedAt,
       timerSince: undefined,
       timerMode: undefined,
       intervals: History.pauseWorkout(progress.intervals),
-      ...(Progress.isCurrent(progress) ? { endTime: Date.now() } : {}),
+      ...(Progress.isCurrent(progress) ? { endTime } : {}),
     };
   }
 
-  export function getMaxSetFromEntry(entry: IHistoryEntry): ISet | undefined {
-    return getMaxSet(entry.sets);
+  export function getMaxWeightSetFromEntry(entry: IHistoryEntry): ISet | undefined {
+    return getMaxWeightSet(entry.sets);
   }
 
-  export function getMax1RMFromEntry(entry: IHistoryEntry): ISet | undefined {
-    return getMax1RM(entry.sets);
+  export function getMax1RMSetFromEntry(entry: IHistoryEntry): ISet | undefined {
+    return getMax1RMSet(entry.sets);
   }
 
-  export function getMaxSet(sets: ISet[]): ISet | undefined {
+  export function getMaxWeightSet(sets: ISet[]): ISet | undefined {
     return CollectionUtils.sort(
       sets.filter((s) => (s.completedReps || 0) > 0),
       (a, b) => {
-        const weightDiff = Weight.compare(b.weight, a.weight);
+        const weightDiff = Weight.compare(
+          b.completedWeight ?? b.weight ?? Weight.build(0, "lb"),
+          a.completedWeight ?? a.weight ?? Weight.build(0, "lb")
+        );
         if (weightDiff === 0 && a.completedReps && b.completedReps) {
           return b.completedReps - a.completedReps;
         }
@@ -110,13 +146,21 @@ export namespace History {
     )[0];
   }
 
-  export function getMax1RM(sets: ISet[]): ISet | undefined {
+  export function getMax1RMSet(sets: ISet[]): ISet | undefined {
     return CollectionUtils.sort(
       sets.filter((s) => (s.completedReps || 0) > 0),
       (a, b) => {
         const weightDiff = Weight.compare(
-          Weight.getOneRepMax(b.weight, b.completedReps || 0),
-          Weight.getOneRepMax(a.weight, a.completedReps || 0)
+          Weight.getOneRepMax(
+            b.completedWeight ?? b.weight ?? Weight.build(0, "lb"),
+            b.completedReps || 0,
+            b.completedRpe ?? b.rpe ?? 10
+          ),
+          Weight.getOneRepMax(
+            a.completedWeight ?? a.weight ?? Weight.build(0, "lb"),
+            a.completedReps || 0,
+            a.completedRpe ?? a.rpe ?? 10
+          )
         );
         if (weightDiff === 0 && a.completedReps && b.completedReps) {
           return b.completedReps - a.completedReps;
@@ -278,6 +322,47 @@ export namespace History {
     };
   }
 
+  export function collectLastEntry(
+    startTime: number,
+    exerciseType: IExerciseType
+  ): ICollectorFn<
+    IHistoryRecord,
+    { lastHistoryEntry?: IHistoryEntry; lastHistoryRecord?: IHistoryRecord; timestamp?: number }
+  > {
+    return {
+      fn: (acc, hr) => {
+        const time = hr.endTime ?? hr.startTime;
+        if (time < startTime && (acc.timestamp == null || time > acc.timestamp)) {
+          const entry = hr.entries.find((e) => Exercise.eq(e.exercise, exerciseType) && Reps.isStarted(e.sets));
+          if (entry) {
+            acc = { lastHistoryEntry: entry, lastHistoryRecord: hr, timestamp: time };
+          }
+        }
+        return acc;
+      },
+      initial: {},
+    };
+  }
+
+  export function collectLastNote(
+    startTime: number,
+    exerciseType: IExerciseType
+  ): ICollectorFn<IHistoryRecord, { lastNote?: string; timestamp?: number }> {
+    return {
+      fn: (acc, hr) => {
+        const time = hr.endTime ?? hr.startTime;
+        if (time < startTime && (acc.timestamp == null || time > acc.timestamp)) {
+          const entry = hr.entries.find((e) => Exercise.eq(e.exercise, exerciseType));
+          if (entry && entry.notes) {
+            acc = { lastNote: entry.notes, timestamp: time };
+          }
+        }
+        return acc;
+      },
+      initial: {},
+    };
+  }
+
   export function collectWeightPersonalRecord(
     exerciseType: IExerciseType,
     unit: IUnit
@@ -285,9 +370,12 @@ export namespace History {
     return {
       fn: (acc, hr) => {
         const entries = hr.entries.filter((e) => Exercise.eq(e.exercise, exerciseType));
-        const maxSet = getMaxSet(entries.flatMap((e) => e.sets));
-        if (maxSet != null && Weight.gt(maxSet.weight, acc.maxWeight)) {
-          acc = { maxWeight: maxSet.weight, maxWeightHistoryRecord: hr };
+        const maxSet = getMaxWeightSet(entries.flatMap((e) => e.sets));
+        if (maxSet != null) {
+          const weight = maxSet.completedWeight ?? maxSet.weight ?? Weight.build(0, unit);
+          if (Weight.gt(weight, acc.maxWeight)) {
+            acc = { maxWeight: weight, maxWeightHistoryRecord: hr };
+          }
         }
         return acc;
       },
@@ -303,7 +391,10 @@ export namespace History {
       fn: (acc, hr) => {
         const entries = hr.entries.filter((e) => Exercise.eq(e.exercise, exerciseType));
         const allSets = entries.flatMap((e) => e.sets);
-        const all1RMs = allSets.map<[ISet, IWeight]>((s) => [s, Weight.getOneRepMax(s.weight, s.completedReps || 0)]);
+        const all1RMs = allSets.map<[ISet, IWeight]>((s) => [
+          s,
+          Weight.getOneRepMax(s.completedWeight ?? s.weight ?? Weight.build(0, settings.units), s.completedReps || 0),
+        ]);
         const max1RM = CollectionUtils.sort(all1RMs, (a, b) => Weight.compare(b[1], a[1]))[0];
         if (max1RM != null && Weight.gt(max1RM[1], acc.max1RM)) {
           acc = { max1RM: max1RM[1], max1RMHistoryRecord: hr, max1RMSet: max1RM[0] };
@@ -318,12 +409,12 @@ export namespace History {
     const maxSets: Partial<Record<string, ISet>> = {};
     for (const r of history) {
       for (const e of r.entries) {
-        const entryMaxSet = getMaxSetFromEntry(e);
+        const entryMaxSet = getMaxWeightSetFromEntry(e);
         const key = Exercise.toKey(e.exercise);
         if (
           entryMaxSet != null &&
           (entryMaxSet.completedReps || 0) > 0 &&
-          Weight.lt(maxSets[key]?.weight || 0, entryMaxSet.weight)
+          Weight.lt(maxSets[key]?.weight || 0, entryMaxSet.weight ?? Weight.build(0, "lb"))
         ) {
           maxSets[key] = entryMaxSet;
         }
@@ -332,14 +423,118 @@ export namespace History {
     return maxSets;
   }
 
+  export const getDateToHistory = memoize(
+    (history: IHistoryRecord[]): Partial<Record<string, IHistoryRecord>> => {
+      return history.reduce<Partial<Record<string, IHistoryRecord>>>((memo, hr) => {
+        memo[DateUtils.formatYYYYMMDD(hr.date)] = hr;
+        return memo;
+      }, {});
+    },
+    { maxSize: 10 }
+  );
+
+  export function getHistoryRecordsForTimerange(
+    history: IHistoryRecord[],
+    date: number,
+    type: "month" | "week" | "day",
+    startWeekFromMonday?: boolean
+  ): IHistoryRecord[] {
+    // For given date, get the start and end of the timerange, and return history records that fall within that range
+    const start = new Date(date);
+    const end = new Date(date);
+    if (type === "month") {
+      start.setDate(1);
+      end.setMonth(end.getMonth() + 1);
+      end.setDate(0);
+    } else if (type === "week") {
+      start.setDate(start.getDate() - start.getDay() + (startWeekFromMonday ? 1 : 0));
+      end.setDate(start.getDate() + 6);
+    } else if (type === "day") {
+      start.setHours(0, 0, 0, 0);
+    }
+    end.setHours(23, 59, 59, 999);
+    return history.filter((hr) => {
+      if (Progress.isCurrent(hr)) {
+        return false;
+      }
+      const recordDate = Date.parse(hr.date);
+      const startTime = new Date(recordDate);
+      return startTime >= start && startTime < end;
+    });
+  }
+
+  export function getNumberOfPersonalRecords(history: IHistoryRecord[], prs: IPersonalRecords): number {
+    return history.reduce((memo, r) => {
+      return memo + ObjectUtils.keys(prs[r.id] || {})?.length;
+    }, 0);
+  }
+
+  export const getPersonalRecords = memoize(
+    (history: IHistoryRecord[]): IPersonalRecords => {
+      const result: IPersonalRecords = {};
+      const sortedHistory = CollectionUtils.sortBy(history, "id");
+      const max1RMSets: Partial<Record<string, ISet | undefined>> = {};
+      const maxWeightSets: Partial<Record<string, ISet | undefined>> = {};
+      for (const record of sortedHistory) {
+        for (const entry of record.entries) {
+          const key = Exercise.toKey(entry.exercise);
+
+          const thisMaxWeightSet = getMaxWeightSetFromEntry(entry);
+          const thisMaxWeight = thisMaxWeightSet
+            ? (thisMaxWeightSet.completedWeight ?? thisMaxWeightSet.weight)
+            : undefined;
+          const lastMaxWeight = maxWeightSets[key]?.completedWeight ?? maxWeightSets[key]?.weight;
+          if (thisMaxWeight != null && (lastMaxWeight == null || Weight.gt(thisMaxWeight, lastMaxWeight))) {
+            const prevMaxWeightSet = maxWeightSets[key];
+            maxWeightSets[key] = thisMaxWeightSet;
+            result[record.id] = result[record.id] || {};
+            result[record.id]![key] = result[record.id]![key] || {};
+            result[record.id]![key]!.prevMaxWeightSet = prevMaxWeightSet;
+            result[record.id]![key]!.maxWeightSet = thisMaxWeightSet;
+          }
+
+          const thisMax1RMSet = getMax1RMSetFromEntry(entry);
+          const thisMax1RM = thisMax1RMSet
+            ? Weight.getOneRepMax(
+                thisMax1RMSet.completedWeight ?? thisMax1RMSet.weight ?? Weight.build(0, "lb"),
+                thisMax1RMSet.completedReps || 0,
+                thisMax1RMSet.completedRpe ?? thisMax1RMSet.rpe
+              )
+            : undefined;
+          const lastMax1RMSet = max1RMSets[key];
+          const lastMax1RM = lastMax1RMSet
+            ? Weight.getOneRepMax(
+                lastMax1RMSet.completedWeight ?? lastMax1RMSet.weight ?? Weight.build(0, "lb"),
+                lastMax1RMSet?.completedReps || 0,
+                lastMax1RMSet.completedRpe ?? lastMax1RMSet.rpe
+              )
+            : undefined;
+          if (thisMax1RM != null && (lastMax1RM == null || Weight.gt(thisMax1RM, lastMax1RM))) {
+            const prevMax1RMSet = max1RMSets[key];
+            max1RMSets[key] = thisMax1RMSet;
+            result[record.id] = result[record.id] || {};
+            result[record.id]![key] = result[record.id]![key] || {};
+            result[record.id]![key]!.prevMax1RMSet = prevMax1RMSet;
+            result[record.id]![key]!.max1RMSet = thisMax1RMSet;
+          }
+        }
+      }
+      return result;
+    },
+    { maxSize: 10 }
+  );
+
   export function findMaxSet(exerciseType: IExerciseType, history: IHistoryRecord[]): ISet | undefined {
     let maxSet: ISet | undefined = undefined;
     for (const r of history) {
       for (const e of r.entries) {
         if (Exercise.eq(e.exercise, exerciseType)) {
-          const entryMaxSet = getMaxSetFromEntry(e);
+          const entryMaxSet = getMaxWeightSetFromEntry(e);
           if (entryMaxSet != null && (entryMaxSet.completedReps || 0) > 0) {
-            if (maxSet == null || Weight.gt(entryMaxSet.weight, maxSet.weight)) {
+            if (
+              maxSet == null ||
+              Weight.gt(entryMaxSet.weight ?? Weight.build(0, "lb"), maxSet.weight ?? Weight.build(0, "lb"))
+            ) {
               maxSet = entryMaxSet;
             }
           }
@@ -351,7 +546,7 @@ export namespace History {
 
   export function findPersonalRecord(id: number, entry: IHistoryEntry, history: IHistoryRecord[]): ISet | undefined {
     let isMax: boolean | undefined;
-    const entryMaxSet = getMaxSetFromEntry(entry);
+    const entryMaxSet = getMaxWeightSetFromEntry(entry);
     if (entryMaxSet != null && (entryMaxSet.completedReps || 0) > 0) {
       for (const r of history) {
         if (r.id < id) {
@@ -360,8 +555,11 @@ export namespace History {
               if (isMax == null) {
                 isMax = true;
               }
-              const maxSet = getMaxSetFromEntry(e);
-              if (maxSet != null && Weight.gte(maxSet.weight, entryMaxSet.weight)) {
+              const maxSet = getMaxWeightSetFromEntry(e);
+              if (
+                maxSet != null &&
+                Weight.gte(maxSet.weight ?? Weight.build(0, "lb"), entryMaxSet.weight ?? Weight.build(0, "lb"))
+              ) {
                 isMax = false;
               }
             }
@@ -394,7 +592,11 @@ export namespace History {
     return entry.sets
       .filter((s) => (s.completedReps || 0) > 0)
       .reduce(
-        (memo, set) => Weight.add(memo, Weight.multiply(set.weight, set.completedReps || 0)),
+        (memo, set) =>
+          Weight.add(
+            memo,
+            Weight.multiply(set.completedWeight ?? set.weight ?? Weight.build(0, unit), set.completedReps || 0)
+          ),
         Weight.build(0, unit)
       );
   }
@@ -474,7 +676,11 @@ export namespace History {
       for (const entry of record.entries) {
         if (Exercise.eq(currentEntry.exercise, entry.exercise)) {
           for (const set of entry.sets) {
-            if (set.isAmrap && set.reps === nextSet.reps && Weight.eq(set.weight, nextSet.weight)) {
+            if (
+              set.isAmrap &&
+              set.reps === nextSet.reps &&
+              Weight.eq(set.weight ?? Weight.build(0, "lb"), nextSet.weight ?? Weight.build(0, "lb"))
+            ) {
               if (last == null) {
                 last = [set, record.startTime];
               }
@@ -520,12 +726,12 @@ export namespace History {
             historyRecord.dayName,
             Exercise.fullName(exercise, settings),
             1,
-            warmupSet.reps,
+            warmupSet.reps ?? 0,
             warmupSet.completedReps || null,
             warmupSet.completedRpe || null,
             0,
-            warmupSet.weight.value,
-            warmupSet.weight.unit,
+            warmupSet.weight?.value ?? 0,
+            warmupSet.weight?.unit ?? settings.units,
             warmupSet.timestamp != null ? new Date(warmupSet.timestamp || 0).toISOString() : null,
             Exercise.targetMuscles(exercise, settings.exercises).join(","),
             Exercise.synergistMuscles(exercise, settings.exercises).join(","),
@@ -539,12 +745,12 @@ export namespace History {
             historyRecord.dayName,
             Exercise.fullName(exercise, settings),
             0,
-            set.reps,
+            set.reps ?? 0,
             set.completedReps || null,
             set.completedRpe || null,
             set.isAmrap ? 1 : 0,
-            set.weight.value,
-            set.weight.unit,
+            set.weight?.value ?? 0,
+            set.weight?.unit ?? settings.units,
             set.timestamp != null ? new Date(set.timestamp || 0).toISOString() : null,
             Exercise.targetMuscles(exercise, settings.exercises).join(","),
             Exercise.synergistMuscles(exercise, settings.exercises).join(","),
@@ -559,6 +765,7 @@ export namespace History {
 
   export function pauseWorkoutAction(dispatch: IDispatch): void {
     const lensGetters = { progress: lb<IState>().p("progress").pi(0).get() };
+    SendMessage.toIosAndAndroid({ type: "pauseWorkout" });
     updateState(dispatch, [
       lbu<IState, typeof lensGetters>(lensGetters)
         .p("progress")
@@ -583,13 +790,13 @@ export namespace History {
     }
   }
 
-  export function resumeWorkoutAction(dispatch: IDispatch): void {
+  export function resumeWorkoutAction(dispatch: IDispatch, settings: ISettings): void {
     updateState(dispatch, [
       lb<IState>()
         .p("progress")
         .pi(0)
         .p("intervals")
-        .recordModify((intervals) => resumeWorkout(intervals)),
+        .recordModify((intervals) => resumeWorkout(intervals, settings.timers.reminder)),
     ]);
   }
 
@@ -597,7 +804,8 @@ export namespace History {
     return intervals ? intervals.length === 0 || intervals[intervals.length - 1][1] != null : false;
   }
 
-  export function resumeWorkout(intervals?: IIntervals): IIntervals | undefined {
+  export function resumeWorkout(intervals?: IIntervals, reminder?: number): IIntervals | undefined {
+    SendMessage.toIosAndAndroid({ type: "resumeWorkout", reminder: `${reminder || 0}` });
     if (isPaused(intervals)) {
       const newIntervals = intervals ? ObjectUtils.clone(intervals) : [];
       newIntervals.push([Date.now(), undefined]);

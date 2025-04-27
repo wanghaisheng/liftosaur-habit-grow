@@ -4,6 +4,13 @@
 @tailwind base;
 @tailwind components;
 
+@layer base {
+  html,
+  :host {
+    -webkit-tap-highlight-color: revert;
+  }
+}
+
 @import "~prismjs/themes/prism.css";
 @import "fonts.css";
 
@@ -15,6 +22,12 @@
 .ptr--pull {
   margin-top: 3.5rem;
   margin-bottom: -3.5rem;
+}
+
+[data-screen="main"] .ptr--pull,
+[data-screen="main"] .ptr--refresh {
+  margin-top: 4.5rem;
+  margin-bottom: -4.5rem;
 }
 
 /* Chrome, Safari, Edge, Opera */
@@ -30,9 +43,9 @@ input.no-arrows[type="number"] {
 }
 
 body {
-  font-size: 14px;
   background: white;
   color: #171718;
+  height: auto;
 }
 
 .safe-area-inset-top {
@@ -43,7 +56,9 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0.5rem);
 }
 
-.stop-scrolling {
+.stop-scrolling,
+.stop-scrolling-modal,
+.stop-scrolling-bottom-sheet {
   -webkit-overflow-scrolling: touch;
   overflow: hidden;
 }
@@ -58,7 +73,54 @@ body {
 }
 
 .cm-editor {
-  font-size: 16px;
+  font-size: 1rem;
+}
+
+.fade-mask {
+  mask-image:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 1) 10%,
+      rgba(0, 0, 0, 1) 87%,
+      rgba(0, 0, 0, 0) 92%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 1) 10%,
+      rgba(0, 0, 0, 1) 87%,
+      rgba(0, 0, 0, 0) 92%,
+      rgba(0, 0, 0, 0) 100%
+    );
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(
+      to right,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 1) 10%,
+      rgba(0, 0, 0, 1) 87%,
+      rgba(0, 0, 0, 0) 92%,
+      rgba(0, 0, 0, 0) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 5%,
+      rgba(0, 0, 0, 1) 10%,
+      rgba(0, 0, 0, 1) 87%,
+      rgba(0, 0, 0, 0) 92%,
+      rgba(0, 0, 0, 0) 100%
+    );
+  -webkit-mask-composite: destination-in;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
 }
 
 .one-line-text-editor .cm-editor {
@@ -180,7 +242,9 @@ input[type="checkbox"].checkbox {
   height: 10px;
   /* border-left-color: #fff; */
   background: white;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1),
+    0 1px 2px 0 rgba(0, 0, 0, 0.06);
   transform: rotate(45deg);
 }
 
@@ -391,6 +455,33 @@ iframe#exercise-youtube-player {
   text-align: left;
 }
 
+@keyframes swipeable-row-hint {
+  0% {
+    transform: translateX(0px);
+  }
+  5% {
+    transform: translateX(-80px);
+  }
+  10% {
+    transform: translateX(0px);
+  }
+  15% {
+    transform: translateX(-30px);
+  }
+  20% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  30% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(0px);
+  }
+}
+
 @keyframes shiny-border {
   0%,
   100% {
@@ -440,7 +531,9 @@ iframe#exercise-youtube-player {
 .fade {
   opacity: 0;
   visibility: hidden;
-  transition: opacity ease-in-out 0.2s, visibility ease-in-out 0.2s;
+  transition:
+    opacity ease-in-out 0.2s,
+    visibility ease-in-out 0.2s;
 }
 
 .fadein {
@@ -511,11 +604,11 @@ iframe#exercise-youtube-player {
 .planner-editor-view .cm-editor {
   height: auto;
   min-height: 6rem;
-  font-size: 15px;
+  font-size: 1rem;
 }
 
 .planner-editor-view .cm-line {
-  height: 21px;
+  height: 1.35rem;
 }
 
 .planner-stats-tooltip {

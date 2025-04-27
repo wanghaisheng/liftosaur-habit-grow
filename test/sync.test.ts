@@ -22,6 +22,7 @@ import { ObjectUtils } from "../src/utils/object";
 import { lb } from "lens-shmens";
 import sinon from "sinon";
 import { EditStats } from "../src/models/editStats";
+import { Settings } from "../src/models/settings";
 
 function mockDispatch(cb: (ds: IDispatch) => void): IAction | IThunk {
   let extractedAction: IAction | IThunk | undefined;
@@ -200,6 +201,10 @@ describe("sync", () => {
     mockReducer.state.storage.version = "20231009191950";
     // expect to throw
     let threw = false;
+    let msg = "";
+    global.alert = (m) => (msg = m);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    global.window = { alert: global.alert } as any;
     try {
       await mockReducer.run([Thunk.sync2({ force: true })]);
     } catch (error) {
@@ -208,6 +213,8 @@ describe("sync", () => {
       threw = true;
     }
     expect(threw).to.eql(true);
+    // eslint-disable-next-line no-unused-expressions
+    expect(msg).to.contain("kill/restart");
   });
 });
 
@@ -232,19 +239,18 @@ async function logStat(mockReducer: MockReducer<IState, IAction, IEnv>, bodyweig
 }
 
 function completeRepsActions(program: IProgram, progress: IHistoryRecord, reps: number[][]): IAction[] {
-  const allProgramExercises = program.exercises;
+  const evaluatedProgram = Program.evaluate(program, Settings.build());
   return progress.entries.reduce<IAction[]>((memo, entry, entryIndex) => {
     const actions = entry.sets.reduce<IAction[]>((memo2, set, setIndex) => {
       const r = reps[entryIndex][setIndex];
-      const programExercise = program.exercises.find((e) => e.id === entry.programExerciseId);
+      const programExercise = Program.getProgramExercise(progress.day, evaluatedProgram, entry.programExerciseId);
       const setActions: IAction[] = [];
       if (set.isAmrap) {
         setActions.push({
-          type: "ChangeRepsAction",
+          type: "CompleteSetAction",
           entryIndex,
           setIndex,
           programExercise,
-          allProgramExercises,
           mode: "workout",
         });
         setActions.push({
@@ -257,16 +263,14 @@ function completeRepsActions(program: IProgram, progress: IHistoryRecord, reps: 
           entryIndex: entryIndex,
           setIndex: setIndex,
           programExercise: programExercise,
-          allProgramExercises: allProgramExercises,
         });
       } else {
-        for (let i = set.reps; i >= r; i -= 1) {
+        for (let i = set.reps ?? 0; i >= r; i -= 1) {
           setActions.push({
-            type: "ChangeRepsAction",
+            type: "CompleteSetAction",
             entryIndex,
             setIndex,
             programExercise,
-            allProgramExercises,
             mode: "workout",
           });
         }

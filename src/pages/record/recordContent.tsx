@@ -80,10 +80,10 @@ function MaxWeights(props: IMaxWeightsProps): JSX.Element {
       />
       <ul>
         {props.data.record.entries
-          .filter((e) => (History.getMaxSetFromEntry(e)?.completedReps || 0) > 0)
+          .filter((e) => (History.getMaxWeightSetFromEntry(e)?.completedReps || 0) > 0)
           .map((entry) => {
             const exercise = Exercise.get(entry.exercise, props.data.settings.exercises);
-            const set = History.getMaxSetFromEntry(entry)!;
+            const set = History.getMaxWeightSetFromEntry(entry)!;
             return (
               <li>
                 <strong>{exercise.name}</strong>: <SetView set={set} units={props.data.settings.units} />
@@ -128,9 +128,9 @@ function Entry(props: IEntryProps): JSX.Element {
               .map((group) => {
                 let line: string;
                 if (group.length > 1) {
-                  line = `${group.length} x ${group[0].completedReps} x ${Weight.display(group[0].weight)}`;
+                  line = `${group.length} x ${group[0].completedReps ?? 0} x ${Weight.display(group[0].completedWeight ?? Weight.build(0, units))}`;
                 } else {
-                  line = `${group[0].completedReps} x ${Weight.display(group[0].weight)}`;
+                  line = `${group[0].completedReps} x ${Weight.display(group[0].completedWeight ?? Weight.build(0, units))}`;
                 }
                 return <li>{line}</li>;
               })}
@@ -168,9 +168,9 @@ interface ISetProps {
 
 function SetView({ set, units }: ISetProps): JSX.Element {
   return (
-    <span className="whitespace-no-wrap">
+    <span className="whitespace-nowrap">
       {set.completedReps || 0} {StringUtils.pluralize("rep", set.completedReps || 0)} x{" "}
-      {Weight.display(Weight.convertTo(set.weight, units))}
+      {Weight.display(Weight.convertTo(set.completedWeight ?? Weight.build(0, units), units))}
     </span>
   );
 }

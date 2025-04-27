@@ -48,9 +48,7 @@ export function EditProgramV2UiExercise(props: IEditProgramV2UiExerciseProps): J
   const repeatStr = PlannerProgramExercise.repeatToRangeStr(plannerExercise);
   const order = plannerExercise.order !== 0 ? plannerExercise.order : undefined;
   const orderAndRepeat = [order, repeatStr].filter((s) => s).join(", ");
-  const progress = plannerExercise.properties.find((p) => p.name === "progress");
-  const update = plannerExercise.properties.find((p) => p.name === "update");
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
 
   return (
     <div
@@ -186,7 +184,7 @@ export function EditProgramV2UiExercise(props: IEditProgramV2UiExerciseProps): J
       </div>
       {!isCollapsed && (
         <>
-          {plannerExercise.descriptions.length > 0 && (
+          {plannerExercise.descriptions.values.length > 0 && (
             <EditProgramUiDescriptions header="Descriptions" showCurrent={true} plannerExercise={plannerExercise} />
           )}
           <div className="px-1">
@@ -217,28 +215,33 @@ export function EditProgramV2UiExercise(props: IEditProgramV2UiExerciseProps): J
                       />
                     )}
                   </div>
-                  <div className="flex items-end">
+                  <div className="flex items-start my-2">
                     {displayWarmupSets.flat().length > 0 && (
                       <>
                         <div>
-                          <div className="text-xs text-center text-grayv2-main">Warmups</div>
+                          <div className="text-xs text-left text-grayv2-main">Warmups</div>
                           <div>
-                            <div className="flex">
+                            <div>
                               {displayWarmupSets.map((g) => (
-                                <HistoryRecordSet sets={g} isNext={true} />
+                                <HistoryRecordSet sets={g} isNext={true} settings={props.settings} />
                               ))}
                             </div>
                           </div>
                         </div>
-                        <div className="ml-2 mr-4 bg-grayv2-100" style={{ width: "1px", height: "60px" }} />
+                        <div className="self-stretch ml-4 mr-4 bg-grayv2-200" style={{ width: "1px" }} />
                       </>
                     )}
                     <div>
+                      <div className="text-xs text-left text-grayv2-main">Workout</div>
                       {reusingSets && <div className="text-xs text-grayv2-main">Reusing {reusingSets}</div>}
-                      <div className="flex flex-wrap">
-                        {displayGroups.map((g) => (
-                          <HistoryRecordSet sets={g} isNext={true} />
-                        ))}
+                      <div className="text-right">
+                        <div className="flex">
+                          <div>
+                            {displayGroups.map((g) => (
+                              <HistoryRecordSet sets={g} isNext={true} settings={props.settings} />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -247,8 +250,8 @@ export function EditProgramV2UiExercise(props: IEditProgramV2UiExerciseProps): J
             })}
           </div>
           <div className="px-1 pb-2 text-xs text-grayv2-main">
-            {progress && <EditProgramUiProgress progress={progress} />}
-            {update && <EditProgramUiUpdate update={update} />}
+            <EditProgramUiProgress exercise={plannerExercise} settings={props.settings} />
+            <EditProgramUiUpdate exercise={plannerExercise} settings={props.settings} />
           </div>
         </>
       )}

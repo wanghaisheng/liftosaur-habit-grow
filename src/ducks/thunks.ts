@@ -1,5 +1,5 @@
 import { IThunk, IDispatch } from "./types";
-import { IScreen } from "../models/screen";
+import { IScreen, IScreenParams } from "../models/screen";
 import RB from "rollbar";
 import { IGetStorageResponse, IPostSyncResponse, Service } from "../api/service";
 import { lb } from "lens-shmens";
@@ -44,7 +44,7 @@ export class NoRetryError extends Error {
 }
 
 export namespace Thunk {
-  export function googleSignIn(): IThunk {
+  export function googleSignIn(cb?: () => void): IThunk {
     return async (dispatch, getState, env) => {
       const url = UrlUtils.build(window.location.href);
       const forcedUserEmail = url.searchParams.get("forceuseremail");
@@ -57,13 +57,19 @@ export namespace Thunk {
             env.service.googleSignIn(accessToken, userId, {})
           );
           await load(dispatch, "Logging in", () => handleLogin(dispatch, result, env.service.client, userId));
+          if (cb) {
+            cb();
+          }
           dispatch(sync2());
         }
       } else {
         const state = getState();
         const userId = state.user?.id || state.storage.tempUserId;
-        const result = await env.service.googleSignIn("test", userId, { forcedUserEmail });
+        const result = await env.service.googleSignIn(forcedUserEmail, userId, { forcedUserEmail });
         await load(dispatch, "Logging in", () => handleLogin(dispatch, result, env.service.client, userId));
+        if (cb) {
+          cb();
+        }
         dispatch(sync2());
       }
     };
@@ -75,7 +81,7 @@ export namespace Thunk {
     };
   }
 
-  export function appleSignIn(): IThunk {
+  export function appleSignIn(cb?: () => void): IThunk {
     return async (dispatch, getState, env) => {
       dispatch(postevent("apple-sign-in"));
       let id_token: string;
@@ -102,7 +108,14 @@ export namespace Thunk {
         const userId = state.user?.id || state.storage.tempUserId;
         const result = await load(dispatch, "Logging in", async () => env.service.appleSignIn(code, id_token, userId));
         await load(dispatch, "Logging in", () => handleLogin(dispatch, result, env.service.client, userId));
+        if (cb) {
+          cb();
+        }
         dispatch(sync2());
+      } else {
+        if (cb) {
+          cb();
+        }
       }
     };
   }
@@ -197,6 +210,14 @@ export namespace Thunk {
         ]);
         return false;
       } else if (result.type === "error") {
+        if (result.error === "outdated_client_storage") {
+          if (typeof window !== "undefined") {
+            alert(
+              "The version of the storage on a device is older than on the server, so sync failed. " +
+                "To fix it - kill/restart the app a couple times."
+            );
+          }
+        }
         throw new NoRetryError(result.error);
       }
       return false;
@@ -356,13 +377,19 @@ export namespace Thunk {
       const state = getState();
       const currentProgram =
         state.storage.currentProgramId != null ? Program.getProgram(state, state.storage.currentProgramId) : undefined;
-      if (currentProgram) {
-        Program.editAction(dispatch, currentProgram.id);
+      if (Program.isEmpty(currentProgram)) {
+        dispatch(Thunk.pushScreen("programs"));
+      } else if (currentProgram) {
+        Program.editAction(dispatch, currentProgram, undefined, true);
       }
     };
   }
 
-  export function pushScreen(screen: IScreen): IThunk {
+  export function pushScreen<T extends IScreen>(
+    screen: T,
+    params?: IScreenParams<T>,
+    shouldResetStack?: boolean
+  ): IThunk {
     return async (dispatch, getState) => {
       dispatch(postevent("navigate-to-" + screen));
       const confirmation = Screen.shouldConfirmNavigation(getState());
@@ -378,14 +405,27 @@ export namespace Thunk {
         ["musclesProgram", "musclesDay", "graphs"].indexOf(screen) !== -1 &&
         !Subscriptions.hasSubscription(getState().storage.subscription)
       ) {
-        screen = "subscription";
+        shouldResetStack = false;
+        screen = "subscription" as T;
       }
       const screensWithoutCurrentProgram = ["first", "onboarding", "units", "programs", "programPreview"];
       if (getState().storage.currentProgramId == null && screensWithoutCurrentProgram.indexOf(screen) === -1) {
-        screen = "programs";
+        screen = "programs" as T;
       }
-      dispatch({ type: "PushScreen", screen });
+      dispatch({ type: "PushScreen", screen, params, shouldResetStack });
       window.scroll(0, 0);
+    };
+  }
+
+  export function updateScreenParams<T extends IScreen>(params?: IScreenParams<T>): IThunk {
+    return async (dispatch, getState) => {
+      updateState(dispatch, [
+        lb<IState>()
+          .p("screenStack")
+          .recordModify((stack) => {
+            return Screen.updateParams(stack, params);
+          }),
+      ]);
     };
   }
 
@@ -438,26 +478,13 @@ export namespace Thunk {
   }
 
   function cleanup(dispatch: IDispatch, state: IState): void {
-    if (state.currentHistoryRecord) {
-      const progress = state.progress[state.currentHistoryRecord];
-      if (progress && !Progress.isCurrent(progress)) {
-        updateState(dispatch, [
-          lb<IState>().p("currentHistoryRecord").record(undefined),
-          lb<IState>()
-            .p("progress")
-            .recordModify((progresses) => Progress.stop(progresses, progress.id)),
-        ]);
-      }
-    }
-
-    const editExercise = state.editExercise;
-    if (editExercise) {
-      updateState(dispatch, [lb<IState>().p("editExercise").record(undefined)]);
-    }
-
-    const editProgram = state.editProgram;
-    if (editProgram) {
-      updateState(dispatch, [lb<IState>().p("editProgram").record(undefined)]);
+    const progress = Progress.getProgress(state);
+    if (progress && !Progress.isCurrent(progress)) {
+      updateState(dispatch, [
+        lb<IState>()
+          .p("progress")
+          .recordModify((progresses) => Progress.stop(progresses, progress.id)),
+      ]);
     }
 
     const editProgramV2 = state.editProgramV2;
@@ -511,6 +538,30 @@ export namespace Thunk {
         lensRecording: [lb<IState>().p("programs").record(programs)],
         desc: "Set loaded Programs",
       });
+    };
+  }
+
+  export function fetchRevisions(programId: string, cb: () => void): IThunk {
+    return async (dispatch, getState, env) => {
+      const programRevisions = await load(dispatch, "Loading revisions", () =>
+        env.service.getProgramRevisions(programId)
+      );
+      if (programRevisions.success) {
+        updateState(
+          dispatch,
+          [
+            lb<IState>()
+              .p("revisions")
+              .recordModify((revisions) => {
+                return { ...revisions, [programId]: programRevisions.data };
+              }),
+          ],
+          "Set loaded Revisions"
+        );
+      } else {
+        alert("Couldn't fetch program revisions");
+      }
+      cb();
     };
   }
 
@@ -823,7 +874,7 @@ export namespace Thunk {
           dispatch(postevent("complete-apple-subscription"));
           dispatch(log("ls-set-apple-receipt"));
           Subscriptions.setAppleReceipt(dispatch, receipt);
-          if (Screen.current(getState().screenStack) === "subscription") {
+          if (Screen.currentName(getState().screenStack) === "subscription") {
             dispatch(Thunk.pullScreen());
           }
         }
@@ -848,7 +899,7 @@ export namespace Thunk {
           dispatch(postevent("complete-google-subscription"));
           dispatch(log("ls-set-google-purchase-token"));
           Subscriptions.setGooglePurchaseToken(dispatch, purchaseToken);
-          if (Screen.current(getState().screenStack) === "subscription") {
+          if (Screen.currentName(getState().screenStack) === "subscription") {
             dispatch(Thunk.pullScreen());
           }
         }

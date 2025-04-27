@@ -5,40 +5,65 @@ import { HistoryRecordSetsView } from "../../../components/historyRecordSets";
 import { Input } from "../../../components/input";
 import { Scroller } from "../../../components/scroller";
 import { equipmentName, Exercise } from "../../../models/exercise";
-import { Program } from "../../../models/program";
-import { IProgram, IProgramExercise, ISettings, IWeight } from "../../../types";
-import { ObjectUtils } from "../../../utils/object";
+import { IEvaluatedProgram, Program } from "../../../models/program";
+import { IExerciseType, IHistoryEntry, ISettings, IWeight } from "../../../types";
 import { ProgramDetailsExerciseExampleGraph } from "./programDetailsExerciseExampleGraph";
-import { IProgramPreviewPlaygroundWeekSetup } from "../../../components/preview/programPreviewPlaygroundSetup";
 import { Weight } from "../../../models/weight";
+import { PP } from "../../../models/pp";
+import { CollectionUtils } from "../../../utils/collection";
+import { PlannerProgramExercise } from "../../planner/models/plannerProgramExercise";
 
 export interface IProgramDetailsExerciseExampleProps {
   settings: ISettings;
-  program: IProgram;
-  programExercise: IProgramExercise;
-  weekSetup: IProgramPreviewPlaygroundWeekSetup[];
+  program: IEvaluatedProgram;
+  exerciseType: IExerciseType;
+  programExerciseKey: string;
+  weekSetup?: { name?: string }[];
 }
 
 export function ProgramDetailsExerciseExample(props: IProgramDetailsExerciseExampleProps): JSX.Element {
-  const programExercise = ObjectUtils.clone(props.programExercise);
-  const exerciseType = programExercise.exerciseType;
+  const exerciseType = props.exerciseType;
   const exercise = Exercise.get(exerciseType, props.settings.exercises);
-  const day = props.program.days.findIndex((d) => d.exercises.some((e) => e.id === programExercise.id));
+  let dayInWeek: number | undefined;
+  const weekSetup = props.weekSetup || props.program.weeks.map((w) => ({ name: w.name }));
+  PP.iterate2(props.program.weeks, (ex, weekIndex, dayInWeekIndex, dayIndex) => {
+    if (ex.key === props.programExerciseKey) {
+      dayInWeek = dayInWeekIndex + 1;
+      return true;
+    }
+    return false;
+  });
+  dayInWeek = dayInWeek ?? 1;
 
-  const [onerm, setOnerm] = useState<IWeight>(Exercise.onerm(programExercise.exerciseType, props.settings));
+  const [onerm, setOnerm] = useState<IWeight>(Exercise.onerm(props.exerciseType, props.settings));
   const settings = {
     ...props.settings,
-    exerciseData: { ...props.settings.exerciseData, [Exercise.toKey(programExercise.exerciseType)]: { rm1: onerm } },
+    exerciseData: { ...props.settings.exerciseData, [Exercise.toKey(props.exerciseType)]: { rm1: onerm } },
   };
-  const weeks = props.weekSetup.map((week, weekIndex) => {
-    const dayIndex = week.days[day].dayIndex;
-    const dayData = Program.getDayData(props.program, dayIndex, props.settings);
+  const weekEntries = CollectionUtils.compact(
+    weekSetup.map((w, weekIndex) => {
+      const week = props.program.weeks[weekIndex];
+      const programDay = week.days[(dayInWeek ?? 1) - 1];
+      const programExercise = PlannerProgramExercise.toUsed(
+        CollectionUtils.findBy(programDay.exercises, "key", props.programExerciseKey)
+      );
+      const entry: IHistoryEntry = programExercise
+        ? Program.nextHistoryEntry(props.program, programDay.dayData, programExercise, settings)
+        : {
+            exercise: exerciseType,
+            warmupSets: [],
+            sets: [
+              {
+                originalWeight: Weight.build(0, settings.units),
+                weight: Weight.build(0, settings.units),
+                reps: 0,
+              },
+            ],
+          };
 
-    return {
-      label: week.name,
-      entry: Program.programExerciseToHistoryEntry(programExercise, props.program.exercises, dayData, settings, {}),
-    };
-  });
+      return { label: w.name ?? week.name, entry };
+    })
+  );
 
   return (
     <div>
@@ -74,19 +99,14 @@ export function ProgramDetailsExerciseExample(props: IProgramDetailsExerciseExam
             </div>
             <Scroller>
               <section className="relative flex items-center mt-1 ml-2">
-                {weeks.map((week, i) => {
+                {weekEntries.map((week, i) => {
                   return (
                     <>
                       {i !== 0 && <div className="h-12 mr-2 border-l border-grayv2-200" />}
                       <div>
-                        <div className="px-2 text-xs text-center whitespace-no-wrap text-grayv2-main">{week.label}</div>
+                        <div className="px-2 text-xs text-center whitespace-nowrap text-grayv2-main">{week.label}</div>
                         <div className="flex flex-no-wrap justify-center">
-                          <HistoryRecordSetsView
-                            noWrap={true}
-                            sets={week.entry.sets}
-                            isNext={true}
-                            settings={props.settings}
-                          />
+                          <HistoryRecordSetsView sets={week.entry.sets} isNext={true} settings={props.settings} />
                         </div>
                       </div>
                     </>
@@ -98,22 +118,22 @@ export function ProgramDetailsExerciseExample(props: IProgramDetailsExerciseExam
         </div>
         <div className="mb-2">
           <ProgramDetailsExerciseExampleGraph
-            weeksData={weeks}
+            weeksData={weekEntries}
             key={onerm.value}
             title="Weight week over week"
             yAxisLabel="Weight"
             color="red"
-            getValue={(entry) => entry.sets[0].weight.value}
+            getValue={(entry) => entry.sets[0].weight?.value ?? 0}
           />
         </div>
         <div>
           <ProgramDetailsExerciseExampleGraph
-            weeksData={weeks}
+            weeksData={weekEntries}
             key={onerm.value}
             title="Volume (reps * weight) week over week"
             yAxisLabel="Volume"
             color="orange"
-            getValue={(entry) => entry.sets.reduce((acc, s) => acc + s.reps * s.weight.value, 0)}
+            getValue={(entry) => entry.sets.reduce((acc, s) => acc + (s.reps ?? 0) * (s.weight?.value ?? 0), 0)}
           />
         </div>
       </div>

@@ -39,19 +39,21 @@ Squat / 1x5 115lb / warmup: none`
 
   await page.getByTestId("editor-v2-save-full").click();
   await page.getByTestId("editor-save-v2-top").click();
-  await page.getByTestId("menu-item-my-program").click();
 
   await expect(page.getByTestId("history-record").first().getByTestId("history-entry-weight").first()).toHaveText(
     "115lb"
   );
 
   for (const weight of [120, 125, 130, 130, 130, 135]) {
-    await page.getByTestId("start-workout").click();
-    await page.getByTestId("set-nonstarted").click();
-    await page.getByRole("button", { name: "Finish the workout" }).click();
-    await page.getByRole("button", { name: "Continue" }).click();
-    await expect(page.getByTestId("history-record").first().getByTestId("history-entry-weight").first()).toHaveText(
-      `${weight}lb`
-    );
+    await page.getByTestId("footer-workout").click();
+    await page.getByTestId("bottom-sheet").getByTestId("start-workout").click();
+    await PlaywrightUtils.finishExercise(page, "squat", [1]);
+    await page.getByTestId("finish-workout").click();
+    await page.getByTestId("finish-day-continue").click();
+    await page.getByTestId("footer-workout").click();
+    await expect(
+      page.getByTestId("bottom-sheet").getByTestId("history-record").first().getByTestId("history-entry-weight").first()
+    ).toHaveText(`${weight}lb`);
+    await page.getByTestId("bottom-sheet-close").and(page.locator(":visible")).click();
   }
 });

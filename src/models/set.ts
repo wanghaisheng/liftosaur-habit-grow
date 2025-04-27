@@ -1,8 +1,12 @@
 import { CollectionUtils } from "../utils/collection";
 import { Weight } from "./weight";
-import { ISet, IHistoryRecord, IHistoryEntry, IWeight } from "../types";
+import { ISet, IHistoryRecord, IHistoryEntry, IWeight, IUnit } from "../types";
+import { ObjectUtils } from "../utils/object";
+import { UidFactory } from "../utils/generator";
 
 export type IProgramReps = number;
+
+export type ISetsStatus = "success" | "in-range" | "failed" | "not-finished";
 
 export namespace Reps {
   export function display(sets: ISet[], isNext: boolean = false): string {
@@ -13,6 +17,39 @@ export namespace Reps {
       const groups = CollectionUtils.inGroupsOf(5, arr);
       return groups.map((g) => g.join("/")).join("/ ");
     }
+  }
+
+  export function addSet(sets: ISet[], unit: IUnit, lastSet?: ISet, isWarmup?: boolean): ISet[] {
+    lastSet = sets[sets.length - 1] || lastSet;
+    if (lastSet == null) {
+      lastSet = newSet(unit);
+    } else {
+      if (isWarmup) {
+        lastSet = {
+          ...ObjectUtils.clone(lastSet),
+          reps: lastSet.completedReps ?? lastSet.reps,
+          weight: lastSet.completedWeight ?? lastSet.weight,
+        };
+      } else {
+        lastSet = {
+          ...ObjectUtils.clone(lastSet),
+          reps: lastSet.reps ?? lastSet.completedReps,
+          weight: lastSet.weight ?? lastSet.completedWeight,
+          originalWeight: lastSet.originalWeight ?? lastSet.weight ?? lastSet.completedWeight,
+          completedReps: undefined,
+          completedWeight: undefined,
+          completedRpe: undefined,
+        };
+      }
+    }
+
+    return [...sets, { ...ObjectUtils.clone(lastSet), id: UidFactory.generateUid(6), isCompleted: false }];
+  }
+
+  export function isSameSet(set1: ISet, set2: ISet): boolean {
+    return (
+      Weight.eqNull(set1.weight, set2.weight) && set1.completedReps === set2.completedReps && set1.rpe === set2.rpe
+    );
   }
 
   export function displayReps(set: ISet): string {
@@ -36,38 +73,85 @@ export namespace Reps {
   }
 
   export function isEmpty(sets: ISet[]): boolean {
-    return sets.every((s) => s.completedReps == null);
+    return sets.every((s) => !s.isCompleted);
+  }
+
+  export function newSet(unit: IUnit): ISet {
+    return {
+      id: UidFactory.generateUid(6),
+      originalWeight: undefined,
+      weight: undefined,
+      reps: undefined,
+      isAmrap: false,
+      askWeight: false,
+      isCompleted: false,
+    };
   }
 
   export function isCompleted(sets: ISet[]): boolean {
-    return sets.every((set) => Reps.isCompletedSet(set));
+    return sets.length > 0 && sets.every((set) => Reps.isCompletedSet(set));
+  }
+
+  export function setsStatus(sets: ISet[]): ISetsStatus {
+    if (Reps.isCompleted(sets)) {
+      return "success";
+    } else if (Reps.isInRangeCompleted(sets)) {
+      return "in-range";
+    } else if (!Reps.isFinished(sets)) {
+      return "not-finished";
+    } else {
+      return "failed";
+    }
   }
 
   export function isCompletedSet(set: ISet): boolean {
-    if (set.completedReps != null) {
-      return set.completedReps >= set.reps;
+    if (set.completedReps != null && set.completedWeight != null) {
+      return (
+        !!set.isCompleted &&
+        (set.reps == null || set.completedReps >= set.reps) &&
+        (set.weight == null || Weight.gte(set.completedWeight, set.weight))
+      );
     } else {
       return false;
     }
   }
 
   export function isInRangeCompletedSet(set: ISet): boolean {
-    return (
-      set.completedReps != null &&
-      (set.minReps != null ? set.completedReps >= set.minReps : set.completedReps >= set.reps)
-    );
+    if (set.completedReps != null && set.completedWeight != null) {
+      return (
+        (set.weight == null || Weight.gte(set.completedWeight, set.weight)) &&
+        (set.minReps != null ? set.completedReps >= set.minReps : set.reps == null || set.completedReps >= set.reps)
+      );
+    } else {
+      return false;
+    }
+  }
+
+  export function isStarted(sets: ISet[]): boolean {
+    return sets.length > 0 && sets.some((s) => isFinishedSet(s));
   }
 
   export function isFinished(sets: ISet[]): boolean {
-    return sets.every((s) => isFinishedSet(s));
+    return sets.length > 0 && sets.every((s) => isFinishedSet(s));
   }
 
   export function isFinishedSet(s: ISet): boolean {
-    return s.completedReps != null;
+    return !!s.isCompleted;
+  }
+
+  export function toKey(set: ISet): string {
+    return `${Weight.printNull(set.weight)}-${Weight.printNull(set.completedWeight)}-${set.reps}-${set.minReps}-${set.isAmrap}-${set.rpe}-${set.askWeight}-${set.completedReps}-${set.completedRpe}-${set.isCompleted}`;
   }
 
   export function isInRangeCompleted(sets: ISet[]): boolean {
     return sets.some((s) => s.minReps != null) && sets.every((s) => Reps.isInRangeCompletedSet(s));
+  }
+
+  export function enforceCompletedSet(set: ISet): ISet {
+    return {
+      ...set,
+      isCompleted: set.completedReps == null || set.completedWeight == null ? false : !!set.isCompleted,
+    };
   }
 
   export function group(sets: ISet[], isNext?: boolean): ISet[][] {
@@ -77,10 +161,11 @@ export namespace Reps {
         const last = lastGroup[lastGroup.length - 1];
         if (
           last != null &&
-          (!Weight.eq(last.weight, set.weight) ||
+          (!Weight.eqNull(last.weight, set.weight) ||
             last.reps !== set.reps ||
             last.minReps !== set.minReps ||
             last.completedReps !== set.completedReps ||
+            !Weight.eqNull(last.completedWeight, set.completedWeight) ||
             last.askWeight !== set.askWeight ||
             (isNext && last.isAmrap !== set.isAmrap) ||
             last.rpe !== set.rpe ||
@@ -97,7 +182,7 @@ export namespace Reps {
   }
 
   export function findNextSet(entry: IHistoryEntry): ISet | undefined {
-    return [...entry.warmupSets, ...entry.sets].filter((s) => s.completedReps == null)[0];
+    return [...entry.warmupSets, ...entry.sets].filter((s) => !s.isCompleted)[0];
   }
 
   export function findNextEntryAndSet(
@@ -133,7 +218,11 @@ export namespace Reps {
   export function volume(sets: ISet[]): IWeight {
     const unit = sets[0]?.weight?.unit || "lb";
     return sets.reduce(
-      (memo, set) => Weight.add(memo, Weight.multiply(set.weight, set.completedReps ?? 0)),
+      (memo, set) =>
+        Weight.add(
+          memo,
+          Weight.multiply(set.completedWeight ?? set.weight ?? Weight.build(0, "lb"), set.completedReps ?? 0)
+        ),
       Weight.build(0, unit)
     );
   }

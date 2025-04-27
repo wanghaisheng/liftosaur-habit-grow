@@ -1421,6 +1421,394 @@ Bench Press / 3x8 / progress: custom() {~
       </ul>
     ),
   },
+  "20241207": {
+    title: <span>Added ongoing workout reminder push notification</span>,
+    body: (
+      <ul>
+        <li>
+          In case you forget to finish the workout, there will be an additional push notification that will remind you
+          that you have an ongoing workout.
+        </li>
+        <li>
+          It's mostly useful if you keep forgetting to finish it, and then you open it in like 5 hours, and it syncs to
+          Apple/Google Health, and your calories stats go crazy.
+        </li>
+        <li>
+          You can control the delay when it will notify you on the Settings - Timers screen. By default it's set to 15
+          minutes.
+        </li>
+        <li>You need to update the app from App Store or Google Play to get the feature.</li>
+      </ul>
+    ),
+  },
+  "20241208": {
+    title: <span>Added `print` function</span>,
+    body: (
+      <ul>
+        <li>
+          Useful for debugging your scripts. Use it like:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock
+              script={`Squat / 3x3 / progress: custom() {~
+  print(1, completedReps[1])
+~}`}
+            />
+          </div>
+        </li>
+        <li>
+          It accepts any number of arguments, and outputs them in the playground or during a workout. Unfortunately
+          Liftoscript still doesn't support strings, but you can use numbers to distinguish prints, like:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock
+              script={`Squat / 3x3 / progress: custom() {~
+  var.a = 10%
+  print(1, completedReps[1])
+  print(2, 30lb)
+  print(3, var.a)
+~}`}
+            />
+          </div>
+        </li>
+        <li>
+          You can use them both in <strong>progress</strong> and <strong>update</strong> scripts.
+        </li>
+      </ul>
+    ),
+  },
+  "20241214": {
+    title: <span>Added day/week descriptions</span>,
+    body: (
+      <ul>
+        <li>
+          Now you can add week and day descriptions, in Markdown format. Current week description will be shown on the
+          history screen, and the day description will be shown on the ongoing workout screen.
+        </li>
+        <li>
+          You can do that through UI, or in the full program mode you just add comments above the day or week, similarly
+          how you do that for the exercises. Like:
+        </li>
+        <li>
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock
+              script={`// This is a description for week 1
+// * Do this
+// * Then do that
+# Week 1
+
+// This is a description for day 1
+// **Do those exercises:**
+## Day 1
+
+Squat / 5x5 / progress: lp(5lb)`}
+            />
+          </div>
+        </li>
+      </ul>
+    ),
+  },
+  "20241223": {
+    title: <span>Added a way to generate program images</span>,
+    body: (
+      <ul>
+        <li>You can share them in the social media, chats, etc.</li>
+        <li>
+          You can configure what the image would look like - how many columns (days) would it have, what days to
+          include, etc.
+        </li>
+        <li>
+          Available in the Web Editor (the picture icon on the right), or in the kebab menu in the top right corner on
+          the Program screen in the app.
+        </li>
+      </ul>
+    ),
+  },
+  "20250117": {
+    title: <span>Share workouts on Social Media</span>,
+    body: (
+      <ul>
+        <li>You can share your finished workouts on Instagram (and once Tiktok approves Liftosaur app - on Tiktok)</li>
+        <li>
+          You can do it from the congratulations screen, or if you tap on one of the past workouts. This replaces
+          outdated "Share" functionality where you could share via a post on Facebook or Twitter.
+        </li>
+        <li>
+          It generates an image of a workout that you could share on some default background, or use your photo as a
+          background. Or you can just generate a workout image via "... More" menu, and share it through native share
+          sheet.
+        </li>
+      </ul>
+    ),
+  },
+  "20250119": {
+    title: <span>Redesigned the sets, and added PRs to history/exercise stats</span>,
+    body: (
+      <ul>
+        <li>
+          Changed what the sets (on the history screen, in the program, etc) look like - now they laid out vertically,
+          and it's easier to scan weight/reps for the sets.
+        </li>
+        <li>
+          Also added PRs indication to the history and to the exercise stats screens - highlighting if some set was a
+          PR.
+        </li>
+      </ul>
+    ),
+  },
+  "20250202": {
+    title: <span>Redesigning the navigation</span>,
+    body: (
+      <ul>
+        <li>
+          Changing the navigation quite drastically, to accomodate upcoming calendar. The following things changed:
+        </li>
+        <li>
+          <ul className="pl-4 list-disc">
+            <li>
+              Footer buttons got changed - now there's "Home" for the history, "Settings" is renamed to "Me", and{" "}
+              <strong>"Measurements" got moved into "Me"</strong>.
+            </li>
+            <li>
+              To start a new workout, tap the Dumbbell button in the footer.{" "}
+              <strong>No way to start a workout from the history screen anymore!</strong>
+            </li>
+            <li>If there's ongoing workout, tap the Dumbbell button again to get back to it.</li>
+            <li>
+              Each button in the footer resets the navigation stack. So if you go from Home to Program, there'd be no
+              "Back" button. This is to make the app navigation more similar to other apps (like Instagram, Facebook,
+              etc)
+            </li>
+          </ul>
+        </li>
+      </ul>
+    ),
+  },
+  "20250210": {
+    title: <span>📅 Added calendar</span>,
+    body: (
+      <ul>
+        <li>Now instead of a flat list of workouts on the Workout History screen, there's a calendar now.</li>
+        <li>
+          At the top there's week calendar now, that you can swipe left and right to change the week. If you tap it - it
+          opens monthly calendar.
+        </li>
+        <li>You can switch whether a week starts from Monday or Sunday in Settings.</li>
+      </ul>
+    ),
+  },
+  "20250304": {
+    title: <span>Massive update where nothing is changed</span>,
+    body: (
+      <ul>
+        <li>
+          I rewrote the Liftoscript engine from the ground up, to simplify it and remove the dependency on the old-style
+          programs. It's now way easier to add new features to it, but that also means I'm replacing a system that was
+          battle-tested for years with a new one. So, there could be bugs.
+        </li>
+        <li>
+          In case you see any issues with the Liftoscript or your programs - please please please let me know at{" "}
+          <strong>info@liftosaur.com</strong>! Please include the account name (from Me -&gt; Account) in the email.
+          Thanks!
+        </li>
+      </ul>
+    ),
+  },
+  "20250305": {
+    title: <span>Added negative weights support</span>,
+    body: (
+      <ul>
+        <li>
+          You can now use negative values for weights, e.g. <strong>-5lb</strong>.
+        </li>
+        <li>
+          That could be useful e.g. for the assisted Pull Ups with Leverage Machine, e.g. you can define it as:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock script={`Pull Up / 3x8 40lb / progress: lp(-5lb)`} />
+          </div>
+          and it will decrease the weight you load on the machine by 5lb each time you finish a workout.
+        </li>
+        <li>
+          Or you could do it like:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock script={`Pull Up / 3x8 -40lb / progress: lp(5lb)`} />
+          </div>
+          i.e. use negative weight as a base, and incrementing it over time.
+        </li>
+      </ul>
+    ),
+  },
+  "20250309": {
+    title: <span>Big changes in Liftoscript reuse syntax</span>,
+    body: (
+      <ul>
+        <li>
+          The reuse syntax like <strong>Squat / ...Bench Press</strong> just became way more powerful.
+        </li>
+        <li>
+          <ul className="pl-4 list-disc">
+            <li>
+              It now reuses <strong>progress</strong> and <strong>update</strong> scripts as well, including built-in
+              like <strong>lp</strong> or <strong>dp</strong>.
+            </li>
+            <li>
+              For "template" exercises (the <strong>/ used: none /</strong> ones) it's not required to have a custom or
+              built-in exercise matching the name anymore. So, you can name your templates like <strong>T1</strong> or
+              something like that, and don't create custom exercises with <strong>T1</strong> name.
+            </li>
+            <li>
+              If you reuse <strong>progress: custom()</strong>, you don't have to list all the state variables again in
+              the reusing <strong>progress: custom()</strong> arguments. They will be inherited, you only need to list
+              the ones that have different value from the original ones.
+            </li>
+            <li>You can reuse exercises with multiple set variations too now.</li>
+          </ul>
+        </li>
+        <li>
+          It's a slightly breaking change because if you previously used <strong>...Squat</strong> it didn't reuse
+          progress and update scripts, and now it does. So, if you want to reuse everything except progress/update -
+          you'd need to overwrite them in the reusing exercise, like:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock script={`Squat / ...Bench Press / progress: custom() {~ ~}`} />
+          </div>
+        </li>
+      </ul>
+    ),
+  },
+  "20250330": {
+    title: <span>New Workout Screen!</span>,
+    body: (
+      <ul>
+        <li>Workout screen was completely redesigned.</li>
+        <li>
+          It now looks closer to all the rest of the workout apps, where each row is a set, and reps and weights are
+          input fields. It still will prefill the fields with the values from the program, but you can change them if
+          necessary. You don't need to change the fields though, just tap the checkmark if they already look right.
+        </li>
+        <li>
+          The <strong>Target</strong> column contains the requirements for the set - from the program. We still use the
+          same color coding to distinguish between success sets (green), failed sets (red) and in-range sets (yellow).
+        </li>
+        <li>You can swipe the sets, to edit the target, or delete the set.</li>
+        <li>
+          Instead of one long list with all exercises, now there're tabs for each exercise at the top, and you can see
+          the progress of each exercise there. Under each exercise there's graphs and history for that exercise.
+        </li>
+        <li>
+          🚨 <strong>There's a breaking change!!!</strong> 🚨. Completed weights now are contained in the
+          <strong>completedWeights</strong> array var (used to be in <strong>weights</strong>). <strong>weights</strong>
+          now contains the program weights. There's automated migration that should run and theoretically you don't need
+          to do anything, but check your scripts to make sure it looks good.
+        </li>
+      </ul>
+    ),
+  },
+  "20250409": {
+    title: <span>📅 Tweaked the Calendar (Home screen)</span>,
+    body: (
+      <ul>
+        <li>Bringing back the infinite scroll to the Home screen!</li>
+        <li>
+          A few months ago I added calendar to the Home screen, and removed the infinite scroll, showing only the
+          currently selected week workouts instead.
+        </li>
+        <li>
+          The downside of that was that now the scrolling happens in 2 directions - horizontally (switching weeks) and
+          vertically (scrolling the workouts) - not as convenient. Also, it used to be nice to see the currently ongoing
+          workout on the top of the screen - that was removed with per-week workouts.
+        </li>
+        <li>
+          So, now the infinite scroll is back, and it will show the currently ongoing workout (if any) at the top of
+          home screen. While you're scrolling the list, it will update the week insights and week calendar on top. And
+          if you open the month calendar (by tapping on the week calendar) and then tap on the workout there - it will
+          scroll to that workout.
+        </li>
+      </ul>
+    ),
+  },
+  "20250413": {
+    title: <span>Add "programNumberOfSets" and "completedNumberOfSets" read-only variables</span>,
+    body: (
+      <ul>
+        <li>Those could be useful for number of sets-based progressions.</li>
+        <li>
+          Currently, there is <strong>numberOfSets</strong> variable, but it only shows how many sets currently in the
+          workout total. There's currently no way to read how many sets are in the program for that week/day, or how
+          many sets is currently completed.
+        </li>
+        <li>Those 2 new variables return that. You can use them both in the progress and update scripts.</li>
+      </ul>
+    ),
+  },
+  "20250417": {
+    title: <span>Add a way to create program days from Ad-hoc workouts</span>,
+    body: (
+      <ul>
+        <li>
+          If you did an ad-hoc workout, you may want to create a program day from it (either in a new or existing
+          program) - so you could do it again, or incorporate it into your programs.
+        </li>
+        <li>
+          It also lowers the barrier for creating programs - you don't have to create programs upfront, you can build
+          them over time iteratively. You do ad-hoc workouts, then create program days from it, slap some progression
+          logic on top of it, and you're good to go.
+        </li>
+        <li>
+          You can do that either after finishing the workout - from the congratulations screen, or if you tap on the
+          past workout on Home screen.
+        </li>
+      </ul>
+    ),
+  },
+  "20250421": {
+    title: <span>Sets are now optional in the program</span>,
+    body: (
+      <ul>
+        <li>
+          If you don't specify any sets for an exercise - it won't be an error anymore. So, a program like this is a
+          valid program now:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock
+              script={`Squat
+Bench Press
+Bicep Curl`}
+            />
+          </div>
+        </li>
+        <li>
+          It could be also useful for "templates", where you could define a template without sets, but e.g. with
+          progress and warmups:
+          <div className="m-2 overflow-x-auto">
+            <PlannerCodeBlock
+              script={`main / used: none / warmup: 1x5 45lb, 1x5 135lb / progress: lp(5lb)
+Squat / 3x8 100lb / ...main`}
+            />
+          </div>
+        </li>
+        <li>
+          One <strong>BREAKING CHANGE</strong> is that if you don't specify the weight - it won't add 1RM percentage
+          anymore based on reps/RPE. It'd be just empty weight field now, and will ask you about the weight on
+          completion.
+        </li>
+      </ul>
+    ),
+  },
+  "20250424": {
+    title: <span>Redesigned "Choose Program" screen</span>,
+    body: (
+      <ul>
+        <li>
+          It now has filters (by frequency, duration of a workout, experience, etc) to help you find a suitable program.
+        </li>
+        <li>
+          Builtin and your programs are now separated into separate tabs, and the cards for your programs look similar
+          to built-in programs.
+        </li>
+        <li>
+          Also, you can skip selecting a program now, and go without a program. Could be useful if you want to build a
+          program iteratively over time from ad-hoc workouts.
+        </li>
+      </ul>
+    ),
+  },
 };
 
 export namespace WhatsNew {

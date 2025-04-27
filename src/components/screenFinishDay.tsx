@@ -5,15 +5,12 @@ import { Button } from "./button";
 import { ScreenActions } from "../actions/screenActions";
 import { StringUtils } from "../utils/string";
 import { Weight } from "../models/weight";
-import { Exercise } from "../models/exercise";
 import { useState } from "preact/hooks";
-import { ModalShare } from "./modalShare";
 import { Confetti } from "./confetti";
 import { IHistoryRecord, IScreenMuscle, ISettings } from "../types";
 import { NavbarView } from "./navbar";
 import { Surface } from "./surface";
-import { ILoading } from "../models/state";
-import { IScreen } from "../models/screen";
+import { INavCommon } from "../models/state";
 import { Thunk } from "../ducks/thunks";
 import { GroupHeader } from "./groupHeader";
 import { HistoryEntryView } from "./historyEntry";
@@ -24,21 +21,34 @@ import { TimeUtils } from "../utils/time";
 import { MenuItemEditable } from "./menuItemEditable";
 import { SendMessage } from "../utils/sendMessage";
 import { HealthSync } from "../lib/healthSync";
+import { WorkoutSocialShareSheet } from "./workoutSocialShareSheet";
+import { BottomSheet } from "./bottomSheet";
+import { IconInstagram } from "./icons/iconInstagram";
+import { WorkoutShareButton } from "./workoutShareButton";
+import { IconLink } from "./icons/iconLink";
+import { IconKebab } from "./icons/iconKebab";
+import { IconPicture } from "./icons/iconPicture";
+import { Share } from "../models/share";
+import { ClipboardUtils } from "../utils/clipboard";
+import { InternalLink } from "../internalLink";
+import { LinkButton } from "./linkButton";
+import { IconTiktok } from "./icons/iconTiktok";
+import { PersonalRecords } from "./personalRecords";
+import { ModalDayFromAdhoc } from "./modalDayFromAdhoc";
+import { ImagePreloader } from "../utils/imagePreloader";
 
 interface IProps {
   history: IHistoryRecord[];
   settings: ISettings;
   userId?: string;
   dispatch: IDispatch;
-  loading: ILoading;
-  screenStack: IScreen[];
+  navCommon: INavCommon;
 }
 
 export function ScreenFinishDay(props: IProps): JSX.Element {
   const record = props.history[0];
 
-  const prs = History.findAllPersonalRecords(record, props.history);
-  const [isShareShown, setIsShareShown] = useState<boolean>(false);
+  const allPrs = History.getPersonalRecords(props.history);
   const totalWeight = History.totalRecordWeight(record, props.settings.units);
 
   const startedEntries = History.getStartedEntries(record);
@@ -58,27 +68,34 @@ export function ScreenFinishDay(props: IProps): JSX.Element {
   }, []);
   muscleGroups.sort((a, b) => b[1] - a[1]);
   const muscleGroupsGrouped = CollectionUtils.splitIntoNGroups(muscleGroups, 2);
+  const [showCreateProgramDay, setShowCreateProgramDay] = useState(false);
+  const eligibleForCreateProgramDay = props.navCommon.allPrograms.every((p) => p.id !== record.programId);
 
   return (
     <Surface
-      navbar={
-        <NavbarView
-          loading={props.loading}
-          dispatch={props.dispatch}
-          screenStack={props.screenStack}
-          title="Congratulations!"
-        />
+      navbar={<NavbarView dispatch={props.dispatch} navCommon={props.navCommon} title="Congratulations!" />}
+      addons={
+        <Fragment>
+          {showCreateProgramDay && (
+            <ModalDayFromAdhoc
+              initialCurrentProgramId={props.navCommon.currentProgram?.id}
+              allPrograms={props.navCommon.allPrograms}
+              settings={props.settings}
+              dispatch={props.dispatch}
+              record={record}
+              onClose={() => setShowCreateProgramDay(false)}
+            />
+          )}
+        </Fragment>
       }
       footer={<></>}
-      addons={
-        <>
-          {isShareShown && props.userId != null && (
-            <ModalShare userId={props.userId} id={record.id} onClose={() => setIsShareShown(false)} />
-          )}
-        </>
-      }
     >
-      <section className="px-4">
+      <section className="px-4 text-sm">
+        <div className="flex items-center justify-center pb-2">
+          <div>
+            <img src={ImagePreloader.dynohappy} className="block" style={{ width: 170, height: 150 }} />
+          </div>
+        </div>
         <section className="px-4 pb-2 text-center">
           <div className="text-sm text-grayv2-main">{record.programName}</div>
           <div className="text-base">{record.dayName}</div>
@@ -146,37 +163,15 @@ export function ScreenFinishDay(props: IProps): JSX.Element {
           </div>
         </div>
 
-        {prs.size > 0 ? (
-          <section className="px-4 py-4 mt-4">
-            <h3 className="pb-2 font-bold" dangerouslySetInnerHTML={{ __html: "&#x1F3C6 New Personal Records" }} />
-            <ul>
-              {Array.from(prs.keys()).map((exerciseType) => {
-                const exercise = Exercise.get(exerciseType, props.settings.exercises);
-                const set = prs.get(exerciseType)!;
-                const previousMaxSet = History.findMaxSet(exerciseType, props.history.slice(1));
-                return (
-                  <li>
-                    <div>
-                      <strong>{exercise.name}</strong>:{" "}
-                      <span className="whitespace-no-wrap">
-                        {set.completedReps || 0} {StringUtils.pluralize("rep", set.completedReps || 0)} x{" "}
-                        {Weight.display(Weight.convertTo(set.weight, props.settings.units))}
-                      </span>
-                    </div>
-                    {previousMaxSet != null && (
-                      <div className="text-xs italic text-gray-700">
-                        (was {previousMaxSet.completedReps!} x {Weight.display(previousMaxSet.weight)})
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
+        <section className="px-4 py-4 mt-4">
+          <PersonalRecords prs={allPrs} historyRecords={[record]} settings={props.settings} />
+        </section>
+
+        {(SendMessage.isIos() && SendMessage.iosAppVersion() >= 11) ||
+        (SendMessage.isAndroid() && SendMessage.androidAppVersion() >= 20) ? (
+          <MobileShare userId={props.userId} history={props.history} settings={props.settings} />
         ) : (
-          <section className="px-4 pt-8 pb-4 text-center">
-            <div>No new personal records this time</div>
-          </section>
+          <WebappShare userId={props.userId} history={props.history} settings={props.settings} />
         )}
 
         {HealthSync.eligibleForAppleHealth() && (
@@ -204,28 +199,32 @@ export function ScreenFinishDay(props: IProps): JSX.Element {
           </div>
         )}
 
-        <div className="flex w-full gap-8 px-4 pt-4">
-          <div className="flex-1 text-center">
-            <Button
-              name="finish-day-share"
-              className="w-32 ls-finish-day-share"
-              kind="purple"
-              onClick={() => {
-                if (props.userId == null) {
-                  alert("You should be logged in to share workouts.");
-                } else {
-                  setIsShareShown(true);
-                }
-              }}
-            >
-              Share
-            </Button>
-          </div>
+        {eligibleForCreateProgramDay && (
+          <div className="mx-2 my-1 text-xs text-grayv3-main">You can create a program day from this workout</div>
+        )}
+
+        <div className="flex w-full gap-4 pt-4">
+          {eligibleForCreateProgramDay && (
+            <div className="flex-1 text-center">
+              <Button
+                name="create-program-day"
+                kind="purple"
+                buttonSize="lg2"
+                className="w-36"
+                data-cy="create-program-day"
+                onClick={() => {
+                  setShowCreateProgramDay(true);
+                }}
+              >
+                Create Program Day
+              </Button>
+            </div>
+          )}
           <div className="flex-1 text-center">
             <Button
               name="finish-day-continue"
               kind="orange"
-              className="w-32"
+              className="w-36"
               data-cy="finish-day-continue"
               onClick={() => {
                 SendMessage.toIosAndAndroid({
@@ -250,5 +249,152 @@ export function ScreenFinishDay(props: IProps): JSX.Element {
       </section>
       <Confetti />
     </Surface>
+  );
+}
+
+interface IMobileShareProps {
+  history: IHistoryRecord[];
+  settings: ISettings;
+  userId?: string;
+}
+
+function MobileShare(props: IMobileShareProps): JSX.Element {
+  const [isShareShown, setIsShareShown] = useState<boolean>(false);
+  const [shareType, setShareType] = useState<"tiktok" | "igstory" | "igfeed">("igstory");
+
+  return (
+    <div>
+      <div className="px-4 py-4">
+        <GroupHeader name="Share it!" />
+        <div className="flex justify-between gap-4 text-xs text-grayv2-main">
+          <div className="text-center">
+            <button
+              className="nm-finishday-share-igstory"
+              onClick={() => {
+                setShareType("igstory");
+                setIsShareShown(true);
+              }}
+            >
+              <IconInstagram />
+            </button>
+            <div>IG Story</div>
+          </div>
+          <div className="text-center">
+            <button
+              className="nm-finishday-share-igfeed"
+              onClick={() => {
+                setShareType("igfeed");
+                setIsShareShown(true);
+              }}
+            >
+              <IconInstagram />
+            </button>
+            <div>IG Feed</div>
+          </div>
+          <div className="text-center">
+            <button
+              className="nm-finishday-share-tiktok"
+              onClick={() => {
+                setShareType("tiktok");
+                setIsShareShown(true);
+              }}
+            >
+              <IconTiktok />
+            </button>
+            <div>Tiktok</div>
+          </div>
+          <div className="text-center">
+            <WorkoutShareButton
+              history={props.history}
+              record={props.history[0]}
+              settings={props.settings}
+              icon={<IconKebab className="inline-block" />}
+            />
+            <div>More</div>
+          </div>
+        </div>
+        <div className="mt-1 text-center">
+          <LinkButton
+            name="copy-workout-link"
+            onClick={() => {
+              if (props.userId) {
+                const link = Share.generateLink(props.userId, props.history[0].id);
+                ClipboardUtils.copy(link);
+                alert("Copied!");
+              } else {
+                alert("You should be logged in to copy link to a workout");
+              }
+            }}
+          >
+            or just copy a link
+          </LinkButton>
+        </div>
+      </div>
+      <BottomSheet isHidden={!isShareShown} onClose={() => setIsShareShown(false)} shouldShowClose={true}>
+        <WorkoutSocialShareSheet
+          history={props.history}
+          type={shareType}
+          isHidden={!isShareShown}
+          record={props.history[0]}
+          settings={props.settings}
+        />
+      </BottomSheet>
+    </div>
+  );
+}
+
+interface IWebappShareProps {
+  history: IHistoryRecord[];
+  userId?: string;
+  settings: ISettings;
+}
+
+function WebappShare(props: IWebappShareProps): JSX.Element {
+  const [copiedLink, setCopiedLink] = useState<string | undefined>(undefined);
+  const userId = props.userId;
+
+  return (
+    <div>
+      <div className="px-4 py-4">
+        <GroupHeader name="Share it!" />
+        <div className="flex justify-between gap-4 text-xs text-grayv2-main">
+          <div className="text-center">
+            <WorkoutShareButton
+              history={props.history}
+              record={props.history[0]}
+              settings={props.settings}
+              icon={<IconPicture />}
+            />
+            <div>Image</div>
+          </div>
+          <div className="text-center">
+            <button
+              className="w-10 h-10 rounded-full bg-grayv2-100"
+              onClick={() => {
+                if (userId) {
+                  const link = Share.generateLink(userId, props.history[0].id);
+                  ClipboardUtils.copy(link);
+                  setCopiedLink(link);
+                } else {
+                  alert("You should be logged in to copy link to a workout");
+                }
+              }}
+            >
+              <IconLink className="inline-block" />
+            </button>
+            {copiedLink ? (
+              <div>
+                <span>Copied: </span>
+                <InternalLink name="shared-workout-link" href={copiedLink} className="font-bold underline text-bluev2">
+                  Link
+                </InternalLink>
+              </div>
+            ) : (
+              <div>Copy Link</div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

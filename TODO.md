@@ -44,3 +44,12 @@
 
 User debug page:
 - Programs, their version history
+
+* warmups
+* templates
+
+
+* Previous sets ignore empty exercises
+* Save warmup tweaks
+* Hide warmups when completed
+* Toggle between lb/kg by tapping on header

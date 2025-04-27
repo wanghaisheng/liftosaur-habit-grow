@@ -1,4 +1,4 @@
-import { ISettings, IPlannerSettings, IAllEquipment, IAllCustomExercises } from "../types";
+import { ISettings, IPlannerSettings, IAllEquipment, IAllCustomExercises, ITargetType, targetTypes } from "../types";
 import { Weight } from "./weight";
 import { IExportedProgram } from "./program";
 import { ObjectUtils } from "../utils/object";
@@ -9,6 +9,7 @@ export namespace Settings {
       timers: {
         warmup: 90,
         workout: 180,
+        reminder: 900,
       },
       units: "lb",
       planner: buildPlannerSettings(),
@@ -242,7 +243,11 @@ export namespace Settings {
       deletedGyms: [],
       volume: 1.0,
       vibration: false,
+      startWeekFromMonday: false,
       lengthUnits: "in",
+      workoutSettings: {
+        targetType: "target",
+      },
       statsEnabled: { weight: { weight: true }, length: {}, percentage: {} },
       equipment: defaultEquipment(),
       exercises: {},
@@ -304,5 +309,21 @@ export namespace Settings {
 
   export function activeCustomExercises(settings: ISettings): IAllCustomExercises {
     return ObjectUtils.filter(settings.exercises, (k, v) => !v?.isDeleted);
+  }
+
+  export function getNextTargetType(type: ITargetType, skipPlatesCalculator: boolean): ITargetType {
+    const index = targetTypes.indexOf(type);
+    let nextTargetType: ITargetType;
+    if (index === -1) {
+      nextTargetType = targetTypes[0];
+    } else if (index === targetTypes.length - 1) {
+      nextTargetType = targetTypes[0];
+    } else {
+      nextTargetType = targetTypes[index + 1];
+    }
+    if (nextTargetType === "platescalculator" && skipPlatesCalculator) {
+      nextTargetType = getNextTargetType("platescalculator", skipPlatesCalculator);
+    }
+    return nextTargetType;
   }
 }

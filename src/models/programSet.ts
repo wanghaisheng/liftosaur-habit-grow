@@ -1,6 +1,5 @@
-import { IProgramSet, IProgramExercise, ISettings, IDayData } from "../types";
-import { ProgramExercise } from "./programExercise";
-import { Progress } from "./progress";
+import { IPlannerProgramExerciseEvaluatedSet } from "../pages/planner/models/types";
+import { IProgramSet, ISettings } from "../types";
 
 export namespace ProgramSet {
   export function group(sets: IProgramSet[]): IProgramSet[][] {
@@ -26,25 +25,11 @@ export namespace ProgramSet {
     );
   }
 
-  export function approxTimeMs(
-    set: IProgramSet,
-    dayData: IDayData,
-    programExercise: IProgramExercise,
-    allProgramExercises: IProgramExercise[],
-    settings: ISettings
-  ): number {
-    const reps = Progress.executeEntryScript(
-      set.repsExpr,
-      programExercise.exerciseType,
-      dayData,
-      ProgramExercise.getState(programExercise, allProgramExercises),
-      { exerciseType: programExercise.exerciseType, unit: settings.units },
-      settings,
-      "reps"
-    );
+  export function approxTimeMs(set: IPlannerProgramExerciseEvaluatedSet, settings: ISettings): number {
+    const reps = set.maxrep;
     const secondsPerRep = 7;
     const prepareTime = 20;
-    const timeToRep = (prepareTime + reps * secondsPerRep) * 1000;
+    const timeToRep = (prepareTime + (reps ?? 0) * secondsPerRep) * 1000;
     const timeToRest = (settings.timers.workout || 0) * 1000;
     const totalTime = timeToRep + timeToRest;
     return totalTime;

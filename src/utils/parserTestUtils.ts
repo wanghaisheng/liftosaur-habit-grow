@@ -20,6 +20,12 @@ export namespace ParserTestUtils {
       { value: 40, unit: "lb" },
       { value: 40, unit: "lb" },
     ],
+    completedWeights: [
+      { value: 40, unit: "lb" },
+      { value: 40, unit: "lb" },
+      { value: 40, unit: "lb" },
+    ],
+    isCompleted: [1, 1, 1],
     reps: [1, 2, 3],
     minReps: [1, 2, 3],
     RPE: [0, 0, 0],
@@ -33,11 +39,18 @@ export namespace ParserTestUtils {
       { value: 40, unit: "lb" },
       { value: 40, unit: "lb" },
     ],
+    cw: [
+      { value: 40, unit: "lb" },
+      { value: 40, unit: "lb" },
+      { value: 40, unit: "lb" },
+    ],
     r: [1, 2, 3],
     cr: [1, 2, 3],
     mr: [1, 2, 3],
     ns: 3,
+    programNumberOfSets: 3,
     numberOfSets: 3,
+    completedNumberOfSets: 3,
     setIndex: 1,
     setVariationIndex: 1,
     descriptionIndex: 1,
@@ -54,6 +67,8 @@ export namespace ParserTestUtils {
       dayInWeek: args.day ?? 1,
       originalWeights: weights,
       weights,
+      completedWeights: weights,
+      isCompleted: completedReps.map((r) => (r ? 1 : 0)),
       reps,
       minReps: reps,
       RPE: reps.map(() => 0),
@@ -65,9 +80,12 @@ export namespace ParserTestUtils {
       w: weights,
       r: reps,
       cr: completedReps,
+      cw: weights,
       mr: reps,
       ns: args.results.length,
+      programNumberOfSets: args.results.length,
       numberOfSets: args.results.length,
+      completedNumberOfSets: completedReps.filter((cr) => cr != null).length,
       setIndex: 1,
       setVariationIndex: 1,
       descriptionIndex: 1,
@@ -80,7 +98,16 @@ export namespace ParserTestUtils {
     state: IProgramState,
     bindings: IScriptBindings = defaultBindings
   ): number | IWeight | boolean {
-    const scriptRunner = new ScriptRunner(program, state, {}, bindings, fns, "lb", { unit: "lb" }, "regular");
+    const scriptRunner = new ScriptRunner(
+      program,
+      state,
+      {},
+      bindings,
+      fns,
+      "lb",
+      { unit: "lb", prints: [] },
+      "planner"
+    );
     return scriptRunner.execute();
   }
 }

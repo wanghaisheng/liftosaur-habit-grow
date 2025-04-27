@@ -2,19 +2,16 @@ import { test, expect } from "@playwright/test";
 import { PlaywrightUtils, startpage } from "./playwrightUtils";
 
 test("CRUD custom exercises", async ({ page }) => {
-  await page.goto(startpage + "?skipintro=1&legacy=1");
+  await page.goto(startpage + "?skipintro=1");
   page.on("dialog", (dialog) => dialog.accept());
 
   await page.getByTestId("create-program").click({ force: true });
   PlaywrightUtils.disableSubscriptions(page);
 
   await page.getByTestId("modal-create-program-input").fill("My Program");
-  await page.getByTestId("modal-create-program-submit").click();
+  await page.getByTestId("modal-create-experimental-program-submit").click();
 
-  await page.getByTestId("edit-day").click();
-  await page.locator("text=Create New Exercise").click();
-
-  await page.getByTestId("menu-item-exercise").click({ force: true });
+  await page.getByTestId("add-exercise").click();
   await page.getByTestId("custom-exercise-create").click({ force: true });
   await page.getByTestId("custom-exercise-name-input").fill("My Exercise");
   await page.getByTestId("custom-exercise-create").click({ force: true });
@@ -24,20 +21,26 @@ test("CRUD custom exercises", async ({ page }) => {
   await page.getByTestId("custom-exercise-create").click({ force: true });
 
   await page.getByTestId("menu-item-my-exercise-2").click({ force: true });
-  await page.getByTestId("save-exercise").click();
-  await page.waitForTimeout(100);
-  await page.getByTestId("navbar-back").click();
-  await page.getByTestId("navbar-back").click();
-  await page.getByTestId("menu-item-my-program").click({ force: true });
 
-  await page.getByTestId("start-workout").click({ force: true });
-  await page.getByTestId("set-nonstarted").click({ force: true });
-  await page.locator("text=Finish the workout").click();
-  await page.locator("text=Continue").click();
+  await page.getByTestId("edit-exercise").click();
+  await page.getByTestId("edit-exercise-warmups-customize").click();
+  await page.getByTestId("edit-exercise-warmupset-delete").first().click();
+  await page.getByTestId("edit-exercise-warmupset-delete").first().click();
+  await page.getByTestId("edit-exercise-warmupset-delete").first().click();
+
+  await page.getByTestId("editor-save-v2-top").click();
+
+  await page.getByTestId("footer-workout").click();
+  await page.getByTestId("bottom-sheet").getByTestId("start-workout").click();
+
+  await page.getByTestId("complete-set").click();
+  await page.getByTestId("finish-workout").click();
+  await page.getByTestId("finish-day-continue").click();
 
   await page.getByTestId("footer-program").click({ force: true });
   await page.getByTestId("edit-exercise").click();
-  await page.getByTestId("menu-item-exercise").click({ force: true });
+  await page.getByTestId("num-input-edit-exercise-numofsets-value").fill("2");
+  await page.getByTestId("edit-exercise-change-here").click({ force: true });
   await page.getByTestId("custom-exercise-delete-my-exercise-2").click({ force: true });
 
   await page.getByTestId("custom-exercise-create").click({ force: true });
@@ -45,16 +48,20 @@ test("CRUD custom exercises", async ({ page }) => {
   await page.getByTestId("custom-exercise-create").click({ force: true });
 
   await page.getByTestId("menu-item-blah-one").click({ force: true });
-  await page.getByTestId("save-exercise").click();
-  await page.waitForTimeout(100);
-  await page.getByTestId("navbar-back").click();
+  await page.getByTestId("editor-save-v2-top").click();
+  await page.getByTestId("footer-home").click();
 
-  await expect(page.getByTestId("history-entry-exercise-name").nth(0)).toHaveText("Blah One");
-  await expect(page.getByTestId("history-entry-exercise-name").nth(1)).toHaveText("My Exercise 2");
+  await expect(page.getByTestId("history-entry-exercise-name").nth(1)).toHaveText("My Exercise 2 🏆");
+  await page.getByTestId("footer-workout").click();
+  await expect(page.getByTestId("bottom-sheet").getByTestId("history-entry-exercise-name").nth(0)).toHaveText(
+    "Blah One"
+  );
+  await page.getByTestId("bottom-sheet-close").and(page.locator(":visible")).click();
+  await page.waitForTimeout(200);
 
   await page.getByTestId("footer-program").click({ force: true });
   await page.getByTestId("edit-exercise").click();
-  await page.getByTestId("menu-item-exercise").click({ force: true });
+  await page.getByTestId("edit-exercise-change-here").click({ force: true });
   await page.getByTestId("custom-exercise-create").click({ force: true });
 
   await page.getByTestId("custom-exercise-name-input").fill("My Exercise 2");
@@ -71,17 +78,22 @@ test("CRUD custom exercises", async ({ page }) => {
   await page.getByTestId("custom-exercise-create").click({ force: true });
 
   await page.getByTestId("menu-item-my-exercise-3").click({ force: true });
-  await page.getByTestId("save-exercise").click();
-  await page.waitForTimeout(100);
-  await page.getByTestId("navbar-back").click();
+  await page.getByTestId("editor-save-v2-top").click();
+  await page.getByTestId("footer-home").click();
 
-  await expect(page.getByTestId("history-entry-exercise-name").nth(0)).toHaveText("My Exercise 3");
-  await expect(page.getByTestId("history-entry-exercise-name").nth(1)).toHaveText("My Exercise 3");
+  await expect(page.getByTestId("history-entry-exercise-name").nth(1)).toHaveText("My Exercise 3 🏆");
+
+  await page.getByTestId("footer-workout").click();
+  await expect(page.getByTestId("bottom-sheet").getByTestId("history-entry-exercise-name").nth(0)).toHaveText(
+    "My Exercise 3"
+  );
+  await page.getByTestId("bottom-sheet-close").and(page.locator(":visible")).click();
+  await page.waitForTimeout(200);
 
   await page.getByTestId("footer-program").click({ force: true });
-  await page.getByTestId("navbar-3-dot").click({ force: true });
-  await page.getByTestId("bottom-sheet-muscles-program").click({ force: true });
-  await expect(page.getByTestId("target-muscles-list")).toContainText("Hamstrings");
-  await expect(page.getByTestId("target-muscles-list")).toContainText("Shoulders");
-  await expect(page.getByTestId("synergist-muscles-list")).toContainText("Abs");
+  await page.getByTestId("editor-v2-week-muscles").click();
+  await expect(page.getByTestId("modal").and(page.locator(":visible"))).toContainText("Shoulders: 2");
+  await expect(page.getByTestId("modal").and(page.locator(":visible"))).toContainText("Hamstrings: 2");
+  await expect(page.getByTestId("modal").and(page.locator(":visible"))).toContainText("Abs: 1");
+  await expect(page.getByTestId("modal").and(page.locator(":visible"))).toContainText("Triceps: 0");
 });

@@ -1,88 +1,86 @@
+/* eslint-disable @typescript-eslint/ban-types */
 import { IState } from "./state";
 import { dequal } from "dequal";
 import { Program } from "./program";
 import { Progress } from "./progress";
 import { ObjectUtils } from "../utils/object";
+import { IStatsKey } from "../types";
 
-export type ITab = "program" | "measurements" | "workout" | "graphs" | "settings";
+export type ITab = "home" | "program" | "workout" | "graphs" | "me";
 
-export type IScreen =
-  | "first"
-  | "onboarding"
-  | "main"
-  | "settings"
-  | "account"
-  | "timers"
-  | "plates"
-  | "gyms"
-  | "programs"
-  | "progress"
-  | "graphs"
-  | "finishDay"
-  | "muscles"
-  | "stats"
-  | "units"
-  | "appleHealth"
-  | "googleHealth"
-  | "editProgram"
-  | "editProgramExercise"
-  | "editProgramDay"
-  | "editProgramDayScript"
-  | "editProgramWeek"
-  | "measurements"
-  | "subscription"
-  | "exerciseStats"
-  | "exercises"
-  | "programPreview";
+export type IScreenData =
+  | { name: "first"; params?: Record<string, never> }
+  | { name: "main"; params?: { historyRecordId?: number } }
+  | { name: "settings"; params?: Record<string, never> }
+  | { name: "account"; params?: Record<string, never> }
+  | { name: "timers"; params?: Record<string, never> }
+  | { name: "plates"; params?: Record<string, never> }
+  | { name: "gyms"; params?: Record<string, never> }
+  | { name: "programs"; params?: Record<string, never> }
+  | { name: "progress"; params?: { id?: number } }
+  | { name: "graphs"; params?: Record<string, never> }
+  | { name: "finishDay"; params?: Record<string, never> }
+  | { name: "muscles"; params?: Record<string, never> }
+  | { name: "stats"; params?: Record<string, never> }
+  | { name: "units"; params?: Record<string, never> }
+  | { name: "appleHealth"; params?: Record<string, never> }
+  | { name: "googleHealth"; params?: Record<string, never> }
+  | { name: "editProgram"; params?: Record<string, never> }
+  | { name: "measurements"; params?: { key: IStatsKey } }
+  | { name: "subscription"; params?: Record<string, never> }
+  | { name: "exerciseStats"; params?: Record<string, never> }
+  | { name: "exercises"; params?: Record<string, never> }
+  | { name: "programPreview"; params?: Record<string, never> };
+
+export type IScreen = IScreenData["name"];
+export type IScreenStack = IScreenData[];
+export type IScreenParams<T extends IScreen> = Extract<IScreenData, { name: T }>["params"];
 
 export namespace Screen {
-  export const editProgramScreens: IScreen[] = [
-    "editProgram",
-    "editProgramDay",
-    "editProgramWeek",
-    "editProgramExercise",
-    "editProgramDayScript",
-  ];
+  export const editProgramScreens: IScreen[] = ["editProgram"];
 
-  export function current(stack: IScreen[]): IScreen {
+  export function currentName(stack: IScreenStack): IScreen {
+    return stack[stack.length - 1].name;
+  }
+
+  export function current(stack: IScreenStack): IScreenData {
     return stack[stack.length - 1];
   }
 
-  export function push(stack: IScreen[], screen: IScreen): IScreen[] {
-    return [...stack, screen];
+  export function push<T extends IScreenData["name"]>(
+    stack: IScreenStack,
+    name: T,
+    params?: IScreenParams<T>
+  ): IScreenStack {
+    const newEntry: IScreenData = { name, ...(params ? { params } : {}) } as Extract<IScreenData, { name: T }>;
+    return [...stack, newEntry];
   }
 
-  export function pull(stack: IScreen[]): IScreen[] {
+  export function updateParams<T extends IScreen>(stack: IScreenStack, params?: IScreenParams<T>): IScreenStack {
+    const topStack = stack[stack.length - 1];
+    const newTopStack = { ...topStack, params };
+    return [...stack.slice(0, stack.length - 1), newTopStack] as IScreenStack;
+  }
+
+  export function pull(stack: IScreenStack): IScreenStack {
     return stack.length > 1 ? [...stack].slice(0, stack.length - 1) : stack;
   }
 
-  export function previous(stack: IScreen[]): IScreen | undefined {
-    return stack[stack.length - 2];
+  export function previous(stack: IScreenStack): IScreen | undefined {
+    return stack[stack.length - 2]?.name;
   }
 
-  export function enablePtr(stack: IScreen[]): boolean {
-    const curr = Screen.current(stack);
-    return ["first", "onboarding", "finishDay", "subscription", "programs", "measurements"].indexOf(curr) === -1;
+  export function enablePtr(stack: IScreenStack): boolean {
+    const curr = Screen.currentName(stack);
+    return ["first", "finishDay", "subscription", "programs", "measurements"].indexOf(curr) === -1;
   }
 
   export function shouldConfirmNavigation(state: IState): string | undefined {
-    if (state.currentHistoryRecord) {
-      const progress = state.progress[state.currentHistoryRecord];
-      if (progress && !Progress.isCurrent(progress)) {
-        const oldHistoryRecord = state.storage.history.find((hr) => hr.id === state.currentHistoryRecord);
-        if (oldHistoryRecord != null && !dequal(oldHistoryRecord, progress)) {
-          return "Are you sure? Changes won't be saved.";
-        }
-      }
-    }
-
-    const editExercise = state.editExercise;
-    if (editExercise) {
-      let editProgram = Program.getEditingProgram(state);
-      editProgram = editProgram || Program.getProgram(state, state.progress[0]?.programId);
-      const exercise = editProgram?.exercises.find((e) => e.id === editExercise.id);
-      if (exercise == null || !dequal(editExercise, exercise)) {
-        return "Are you sure? Your changes won't be saved";
+    const progress = Progress.getProgress(state);
+    if (progress && !Progress.isCurrent(progress)) {
+      const oldHistoryRecord = state.storage.history.find((hr) => hr.id === progress.id);
+      if (oldHistoryRecord != null && !dequal(oldHistoryRecord, progress)) {
+        return "Are you sure? Changes won't be saved.";
       }
     }
 
@@ -90,7 +88,7 @@ export namespace Screen {
     if (editProgramV2) {
       let editProgram = Program.getEditingProgram(state);
       editProgram = editProgram || Program.getProgram(state, state.progress[0]?.programId);
-      if (editProgram?.planner && !ObjectUtils.isEqual(editProgram.planner, editProgramV2.current.program)) {
+      if (editProgram?.planner && !ObjectUtils.isEqual(editProgram.planner, editProgramV2.current.program.planner!)) {
         return "Are you sure? Your changes won't be saved";
       }
     }
@@ -98,37 +96,38 @@ export namespace Screen {
     return undefined;
   }
 
+  export function isSameTab(prev: IScreen, next: IScreen): boolean {
+    return tab(prev) === tab(next);
+  }
+
   export function tab(screen: IScreen): ITab {
     switch (screen) {
-      case "onboarding": {
-        return "program";
-      }
       case "main": {
-        return "workout";
+        return "home";
       }
       case "settings": {
-        return "settings";
+        return "me";
       }
       case "account": {
-        return "settings";
+        return "me";
       }
       case "timers": {
-        return "settings";
+        return "me";
       }
       case "plates": {
-        return "settings";
+        return "me";
       }
       case "appleHealth": {
-        return "settings";
+        return "me";
       }
       case "googleHealth": {
-        return "settings";
+        return "me";
       }
       case "gyms": {
-        return "settings";
+        return "me";
       }
       case "exercises": {
-        return "settings";
+        return "me";
       }
       case "programs": {
         return "program";
@@ -146,31 +145,19 @@ export namespace Screen {
         return "program";
       }
       case "stats": {
-        return "measurements";
+        return "me";
       }
       case "editProgram": {
         return "program";
       }
-      case "editProgramWeek": {
-        return "program";
-      }
-      case "editProgramExercise": {
-        return "program";
-      }
-      case "editProgramDay": {
-        return "program";
-      }
-      case "editProgramDayScript": {
-        return "program";
-      }
       case "measurements": {
-        return "measurements";
+        return "me";
       }
       case "subscription": {
         return "workout";
       }
       case "exerciseStats": {
-        return "workout";
+        return "me";
       }
       case "programPreview": {
         return "program";

@@ -31,6 +31,7 @@ export const exceptionIgnores = [
   "Load failed",
   "Function timed out",
   "is out of range for changeset",
+  "when attempting to fetch resource",
   "Selection points outside of document",
   "Invalid position",
   "outdated_client_storage",
@@ -80,6 +81,7 @@ export namespace RollbarUtils {
 
   export function config(payload?: object): RB.Configuration {
     return {
+      enabled: __ENV__ === "production" || __ENV__ === "prod-lambda" || __ENV__ === "android",
       payload: {
         environment: __ENV__,
         client: {

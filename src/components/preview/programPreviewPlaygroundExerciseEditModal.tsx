@@ -3,54 +3,53 @@ import { Button } from "../button";
 import { MenuItemEditable } from "../menuItemEditable";
 import { Modal } from "../modal";
 import { Weight } from "../../models/weight";
-import { IProgramExercise, IProgramStateMetadata, ISettings, IExerciseDataValue } from "../../types";
+import { IProgramStateMetadata, ISettings, IExerciseDataValue, IProgramState } from "../../types";
 import { ObjectUtils } from "../../utils/object";
-import { ProgramExercise } from "../../models/programExercise";
 import { ExerciseRM } from "../exerciseRm";
 import { Exercise } from "../../models/exercise";
+import { IPlannerProgramExercise } from "../../pages/planner/models/types";
+import { PlannerProgramExercise } from "../../pages/planner/models/plannerProgramExercise";
 
 interface IProgramPreviewPlaygroundExerciseEditModalProps {
-  programExercise: IProgramExercise;
+  programExercise: IPlannerProgramExercise;
   onClose: () => void;
   onEditStateVariable: (stateKey: string, newValue: string) => void;
   onEditVariable: (variableKey: keyof IExerciseDataValue, newValue: number) => void;
-  isPlanner: boolean;
   settings: ISettings;
 }
 
 export function ProgramPreviewPlaygroundExerciseEditModal(
   props: IProgramPreviewPlaygroundExerciseEditModalProps
-): JSX.Element {
+): JSX.Element | null {
   const programExercise = props.programExercise;
-  const hasStateVariables = ObjectUtils.keys(programExercise.state).length > 0;
-  const hasRm1 = ProgramExercise.isUsingVariable(programExercise, "rm1");
-  if (!hasStateVariables && !hasRm1 && !props.isPlanner) {
-    return <></>;
+  const state = PlannerProgramExercise.getState(props.programExercise);
+  const stateMetadata = PlannerProgramExercise.getStateMetadata(props.programExercise);
+  const hasStateVariables = ObjectUtils.keys(state).length > 0;
+  if (!programExercise.exerciseType) {
+    return null;
   }
   const exercise = Exercise.get(programExercise.exerciseType, props.settings.exercises);
   return (
     <Modal shouldShowClose={true} onClose={props.onClose}>
       <div style={{ minWidth: "15rem" }}>
-        {(props.isPlanner || hasRm1) && (
-          <>
-            <ExerciseRM
-              name="1 Rep Max"
-              rmKey="rm1"
-              exercise={exercise}
-              settings={props.settings}
-              onEditVariable={(value) => {
-                props.onEditVariable("rm1", value);
-              }}
-            />
-          </>
-        )}
+        <>
+          <ExerciseRM
+            name="1 Rep Max"
+            rmKey="rm1"
+            exercise={exercise}
+            settings={props.settings}
+            onEditVariable={(value) => {
+              props.onEditVariable("rm1", value);
+            }}
+          />
+        </>
         {hasStateVariables && (
           <>
             <h2 className="mb-2 text-lg text-center">Edit state variables</h2>
             <ProgramStateVariables
               settings={props.settings}
-              programExercise={programExercise}
-              stateMetadata={programExercise.stateMetadata}
+              state={state}
+              stateMetadata={stateMetadata}
               onEditStateVariable={props.onEditStateVariable}
             />
           </>
@@ -71,27 +70,23 @@ export function ProgramPreviewPlaygroundExerciseEditModal(
 }
 
 interface IStateProps {
-  programExercise: IProgramExercise;
+  state: IProgramState;
   stateMetadata?: IProgramStateMetadata;
   onEditStateVariable: (stateKey: string, newValue: string) => void;
   settings: ISettings;
 }
 
 function ProgramStateVariables(props: IStateProps): JSX.Element {
-  const { programExercise } = props;
-  const reuseLogicId = programExercise.reuseLogic?.selected;
-  const state = reuseLogicId ? programExercise.reuseLogic?.states[reuseLogicId]! : programExercise.state;
-
   return (
     <section className="px-4 py-2 bg-purple-100 rounded-2xl">
-      {ObjectUtils.keys(state).map((stateKey, i) => {
-        const value = state[stateKey];
-        const displayValue = Weight.is(value) ? value.value : value;
+      {ObjectUtils.keys(props.state).map((stateKey, i) => {
+        const value = props.state[stateKey];
+        const displayValue = Weight.is(value) || Weight.isPct(value) ? value.value : value;
 
         return (
           <MenuItemEditable
             name={stateKey}
-            isBorderless={i === Object.keys(state).length - 1}
+            isBorderless={i === Object.keys(props.state).length - 1}
             nextLine={
               props.stateMetadata?.[stateKey]?.userPrompted ? (
                 <div style={{ marginTop: "-0.75rem" }} className="mb-1 text-xs text-grayv2-main">
@@ -102,7 +97,7 @@ function ProgramStateVariables(props: IStateProps): JSX.Element {
             isNameBold={true}
             type="number"
             value={displayValue.toString()}
-            valueUnits={Weight.is(value) ? value.unit : undefined}
+            valueUnits={Weight.is(value) || Weight.isPct(value) ? value.unit : undefined}
             hasClear={false}
             onChange={(newValue) => {
               if (newValue) {

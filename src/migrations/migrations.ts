@@ -16,7 +16,8 @@ import { PlannerProgram } from "../pages/planner/models/plannerProgram";
 import { PlannerKey } from "../pages/planner/plannerKey";
 import { PP } from "../models/pp";
 import { PlannerExerciseEvaluator } from "../pages/planner/plannerExerciseEvaluator";
-import { PlannerToProgram } from "../models/plannerToProgram";
+import { basicBeginnerProgram } from "../programs/basicBeginnerProgram";
+import { Program } from "../models/program";
 declare let Rollbar: RB;
 
 let latestMigrationVersion: number | undefined;
@@ -619,17 +620,10 @@ export const migrations = {
         for (let i = 0; i < storage.programs.length; i += 1) {
           try {
             let program = storage.programs[i];
-            let plannerProgram = program.planner;
-            if (plannerProgram) {
-              program = new PlannerToProgram(
-                program.id,
-                program.nextDay,
-                plannerProgram,
-                storage.settings
-              ).convertToProgram();
-
+            const plannerProgram = program.planner;
+            if (plannerProgram != null) {
               for (const exerciseKey of ObjectUtils.keys(newCustom)) {
-                const { evaluatedWeeks } = PlannerProgram.evaluate(plannerProgram, storage.settings);
+                const { evaluatedWeeks } = PlannerProgram.evaluate(plannerProgram!, storage.settings);
                 const keys: Set<string> = new Set();
                 const custom = newCustom[exerciseKey];
                 PP.iterate(evaluatedWeeks, (ex) => {
@@ -643,23 +637,15 @@ export const migrations = {
                 });
                 const newExerciseType = { id: custom.exercise.id };
                 for (const key of keys) {
-                  const plannerProgramResult = PlannerProgram.replaceExercise(
-                    plannerProgram,
-                    key,
-                    newExerciseType,
-                    storage.settings
-                  );
-                  if (plannerProgramResult.success) {
-                    plannerProgram = plannerProgramResult.data;
+                  const programResult = PlannerProgram.replaceExercise(program, key, newExerciseType, storage.settings);
+                  if (programResult.success) {
+                    program = programResult.data;
                   }
                 }
               }
               const newPlanner = new ProgramToPlanner(
-                program,
-                plannerProgram,
-                storage.settings,
-                {},
-                {}
+                Program.evaluate(program, storage.settings),
+                storage.settings
               ).convertToPlanner();
               program.planner = newPlanner;
               storage.programs[i] = program;
@@ -829,7 +815,7 @@ export const migrations = {
     for (const historyRecord of storage.history) {
       for (const entry of historyRecord.entries) {
         for (const set of entry.sets) {
-          if (set.weight.value == null) {
+          if (set.weight?.value == null) {
             set.weight = Weight.build(0, storage.settings.units || "lb");
           }
         }
@@ -857,6 +843,102 @@ export const migrations = {
   "20241101192254_add_deleted_gyms": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
     const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
     storage.settings.deletedGyms = storage.settings.deletedGyms || [];
+    return storage;
+  },
+  "20241207120042_add_reminder_timer": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    storage.settings.timers.reminder = storage.settings.timers.reminder ?? 900;
+    return storage;
+  },
+  "20250211073832_switch_to_planner_programs": async (
+    client: Window["fetch"],
+    aStorage: IStorage
+  ): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    const currentProgram = storage.programs.find((p) => p.id === storage.currentProgramId);
+    if (currentProgram && currentProgram.planner == null) {
+      const plannerProgram = storage.programs.find((p) => p.planner != null) || {
+        ...basicBeginnerProgram,
+        id: UidFactory.generateUid(8),
+      };
+      storage.programs.push(plannerProgram);
+      storage.currentProgramId = plannerProgram.id;
+      alert(`Old-style programs are not supported anymore, your current program now is '${plannerProgram.name}'`);
+    }
+    return storage;
+  },
+  "20250305183455_cleanup_custom_exercises": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    for (const customExerciseKey of ObjectUtils.keys(storage.settings.exercises)) {
+      const customExercise = storage.settings.exercises[customExerciseKey]!;
+      delete customExercise.defaultEquipment;
+      for (const record of storage.history) {
+        for (const entry of record.entries) {
+          if (entry.exercise.id === customExerciseKey) {
+            entry.exercise = { id: customExerciseKey };
+            record.updatedAt = Date.now();
+          }
+        }
+      }
+      for (const key of ObjectUtils.keys(storage.settings.exerciseData)) {
+        if (key.includes(customExerciseKey)) {
+          if (!storage.settings.exerciseData[customExerciseKey]) {
+            const value = storage.settings.exerciseData[key];
+            delete storage.settings.exerciseData[key];
+            storage.settings.exerciseData[customExercise.id] = value;
+          }
+        }
+      }
+    }
+    return storage;
+  },
+  "20250306192146_fix_empty_graphs": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    for (const customExerciseKey of ObjectUtils.keys(storage.settings.exercises)) {
+      for (const graph of storage.settings.graphs) {
+        if (graph.type === "exercise" && graph.id.includes(customExerciseKey) && graph.id !== customExerciseKey) {
+          graph.id = customExerciseKey;
+        }
+      }
+    }
+    return storage;
+  },
+  "20250322014249_add_is_completed": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    for (const record of storage.history) {
+      for (const entry of record.entries) {
+        for (const set of entry.sets) {
+          if (set.completedReps != null) {
+            set.isCompleted = set.isCompleted ?? true;
+            set.completedWeight = set.completedWeight ?? ObjectUtils.clone(set.weight);
+          }
+        }
+      }
+    }
+    return storage;
+  },
+  "20250329092730_add_workout_settings": async (client: Window["fetch"], aStorage: IStorage): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    storage.settings.workoutSettings = storage.settings.workoutSettings || {
+      targetType: "target",
+    };
+    return storage;
+  },
+  "20250331001906_migrate_weights_to_completed_weights": async (
+    client: Window["fetch"],
+    aStorage: IStorage
+  ): Promise<IStorage> => {
+    const storage: IStorage = JSON.parse(JSON.stringify(aStorage));
+    for (const program of storage.programs) {
+      for (const week of program.planner?.weeks || []) {
+        for (const day of week.days) {
+          const newExerciseStr = PlannerExerciseEvaluator.changeWeightsToCompletedWeights(day.exerciseText);
+          if (newExerciseStr !== day.exerciseText) {
+            day.exerciseText = newExerciseStr;
+          }
+        }
+      }
+    }
     return storage;
   },
 };

@@ -1,11 +1,10 @@
 import { h, JSX, ComponentChildren, Fragment } from "preact";
 import { Thunk } from "../ducks/thunks";
 import { IDispatch } from "../ducks/types";
-import { IScreen } from "../models/screen";
 import { IconBack } from "./icons/iconBack";
 import { IconHelp } from "./icons/iconHelp";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { ILoading, IState, updateState } from "../models/state";
+import { INavCommon, IState, updateState } from "../models/state";
 import { IconSpinner } from "./icons/iconSpinner";
 import { IconClose } from "./icons/iconClose";
 import { lb } from "lens-shmens";
@@ -24,16 +23,16 @@ interface INavbarProps extends INavbarCenterProps {
   dispatch: IDispatch;
   rightButtons?: JSX.Element[];
   onBack?: () => boolean;
+  navCommon: INavCommon;
   helpContent?: ComponentChildren;
-  loading: ILoading;
-  screenStack: IScreen[];
 }
 
 export const NavbarView = (props: INavbarProps): JSX.Element => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [showDebug, setShowDebug] = useState(0);
   const timerRef = useRef<number | undefined>(undefined);
-  const showBackButton = props.screenStack.length > 1;
+  const { screenStack, loading } = props.navCommon;
+  const showBackButton = screenStack.length > 1;
 
   useEffect(() => {
     const onScroll = (): void => {
@@ -55,9 +54,9 @@ export const NavbarView = (props: INavbarProps): JSX.Element => {
     className += " has-shadow";
   }
 
-  const loadingItems = props.loading.items;
+  const loadingItems = loading.items;
   const loadingKeys = Object.keys(loadingItems).filter((k) => loadingItems[k]?.endTime == null);
-  const errors = ObjectUtils.filter(props.loading.items, (k, v) => v?.error != null);
+  const errors = ObjectUtils.filter(loading.items, (k, v) => v?.error != null);
   const error = ObjectUtils.values(errors)[0]?.error;
 
   const isLoading = Object.keys(loadingKeys).length > 0;
@@ -117,7 +116,7 @@ export const NavbarView = (props: INavbarProps): JSX.Element => {
         </div>
         {error && (
           <div
-            className="absolute left-0 flex justify-center w-full align-middle pointer-events-none"
+            className="absolute left-0 flex justify-center w-full text-sm align-middle pointer-events-none"
             style={{ bottom: "-1rem" }}
           >
             <div
@@ -152,18 +151,18 @@ export const NavbarView = (props: INavbarProps): JSX.Element => {
           shouldShowClose={true}
           isFullWidth
         >
-          {props.helpContent}
-          <div className="w-full h-0 mt-4 mb-2 border-b border-grayv2-200" />
-          <p className="text-sm text-grayv2-main">
-            If you still have questions, or if you encountered a bug, have a feature idea, or just want to share some
-            feedback - don't hesitate to <Link href="mailto:info@liftosaur.com">contact us</Link>! Or join our{" "}
-            <Link href="https://discord.com/invite/AAh3cvdBRs">Discord server</Link> and ask your question there.
-          </p>
+          <div className="text-sm">
+            {props.helpContent}
+            <div className="w-full h-0 mt-4 mb-2 border-b border-grayv2-200" />
+            <p className="text-sm text-grayv2-main">
+              If you still have questions, or if you encountered a bug, have a feature idea, or just want to share some
+              feedback - don't hesitate to <Link href="mailto:info@liftosaur.com">contact us</Link>! Or join our{" "}
+              <Link href="https://discord.com/invite/AAh3cvdBRs">Discord server</Link> and ask your question there.
+            </p>
+          </div>
         </Modal>
       )}
-      {showDebug > 4 && (
-        <ModalDebug onClose={() => setShowDebug(0)} loading={props.loading} dispatch={props.dispatch} />
-      )}
+      {showDebug > 4 && <ModalDebug onClose={() => setShowDebug(0)} loading={loading} dispatch={props.dispatch} />}
     </>
   );
 };
@@ -172,14 +171,14 @@ export function NavbarCenterView(props: INavbarCenterProps): JSX.Element {
   if (props.subtitle != null) {
     return (
       <div className="flex-1" onClick={props.onTitleClick}>
-        <div className="pt-2 text-sm font-semibold">{props.title}</div>
-        <div className="pb-2 text-sm font-semibold text-orangev2">{props.subtitle}</div>
+        <div className="pt-2 text-sm font-semibold whitespace-nowrap">{props.title}</div>
+        <div className="pb-2 text-sm font-semibold text-orangev2 whitespace-nowrap">{props.subtitle}</div>
       </div>
     );
   } else {
     return (
       <div className="flex-1 py-2" onClick={props.onTitleClick}>
-        <div className="py-2 text-lg font-semibold whitespace-no-wrap">{props.title}</div>
+        <div className="py-2 text-lg font-semibold whitespace-nowrap">{props.title}</div>
       </div>
     );
   }

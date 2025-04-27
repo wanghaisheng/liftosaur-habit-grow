@@ -3,8 +3,8 @@ import { completeFromList, CompletionContext } from "@codemirror/autocomplete";
 import type { IProgramState } from "./types";
 import { PlannerNodeName } from "./pages/planner/plannerExerciseStyles";
 import { SyntaxNode } from "@lezer/common";
-import { PlannerToProgram } from "./models/plannerToProgram";
 import { liftoscriptLanguage } from "./liftoscriptLanguage";
+import { PlannerExerciseEvaluator } from "./pages/planner/plannerExerciseEvaluator";
 
 function findStateInScope(context: CompletionContext, script: string): IProgramState | undefined {
   const nodeBefore = syntaxTree(context.state).resolveInner(context.pos, -1);
@@ -16,7 +16,7 @@ function findStateInScope(context: CompletionContext, script: string): IProgramS
     const fnArgs = node.getChildren(PlannerNodeName.FunctionArgument).map((argNode) => {
       return script.slice(argNode.from, argNode.to);
     });
-    const { state } = PlannerToProgram.fnArgsToState(fnArgs);
+    const state = PlannerExerciseEvaluator.fnArgsToStateVars(fnArgs).state;
     return state;
   } else {
     return undefined;
@@ -47,6 +47,7 @@ export function buildLiftoscriptLanguageSupport(codeEditor: { state: IProgramSta
           { label: "RPE", type: "keyword liftoscript" },
           { label: "completedReps", type: "keyword liftoscript" },
           { label: "completedRPE", type: "keyword liftoscript" },
+          { label: "completedWeights", type: "keyword liftoscript" },
           { label: "setVariationIndex", type: "keyword liftoscript" },
           { label: "descriptionIndex", type: "keyword liftoscript" },
           { label: "rm1", type: "keyword liftoscript" },
@@ -54,11 +55,14 @@ export function buildLiftoscriptLanguageSupport(codeEditor: { state: IProgramSta
           { label: "week", type: "keyword liftoscript" },
           { label: "dayInWeek", type: "keyword liftoscript" },
           { label: "setIndex", type: "keyword liftoscript" },
+          { label: "programNumberOfSets", type: "keyword liftoscript" },
           { label: "numberOfSets", type: "keyword liftoscript" },
+          { label: "completedNumberOfSets", type: "keyword liftoscript" },
           { label: "roundWeight", type: "function liftoscript" },
           { label: "calculateTrainingMax", type: "function liftoscript" },
           { label: "calculate1RM", type: "function liftoscript" },
           { label: "zeroOrGte", type: "function liftoscript" },
+          { label: "print", type: "function liftoscript" },
           { label: "sets", type: "function liftoscript" },
           { label: "rpeMultiplier", type: "function liftoscript" },
           { label: "floor", type: "function liftoscript" },

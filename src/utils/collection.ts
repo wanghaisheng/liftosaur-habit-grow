@@ -101,10 +101,10 @@ export namespace CollectionUtils {
   export function groupByKey<
     T,
     K extends keyof T,
-    U extends T[K] extends string ? string : T[K] extends number ? number : never
+    U extends T[K] extends string ? string : T[K] extends number ? number : never,
   >(arr: T[], key: K): Partial<Record<U, T[]>> {
     return arr.reduce<Partial<Record<U, T[]>>>((memo, item) => {
-      const value = (item[key] as unknown) as U;
+      const value = item[key] as unknown as U;
       memo[value] = memo[value] || [];
       memo[value]!.push(item);
       return memo;
@@ -123,10 +123,18 @@ export namespace CollectionUtils {
   export function groupByKeyUniq<
     T,
     K extends keyof T,
-    U extends T[K] extends string ? string : T[K] extends number ? number : never
+    U extends T[K] extends string ? string : T[K] extends number ? number : never,
   >(arr: T[], key: K): Partial<Record<U, T>> {
     return arr.reduce<Partial<Record<U, T>>>((memo, item) => {
-      const value = (item[key] as unknown) as U;
+      const value = item[key] as unknown as U;
+      memo[value] = item;
+      return memo;
+    }, {});
+  }
+
+  export function groupByExprUniq<T>(arr: T[], expr: (item: T) => string): Partial<Record<string, T>> {
+    return arr.reduce<Partial<Record<string, T>>>((memo, item) => {
+      const value = expr(item);
       memo[value] = item;
       return memo;
     }, {});
@@ -257,6 +265,10 @@ export namespace CollectionUtils {
     return from.filter((t) => t !== item);
   }
 
+  export function removeAll<T>(from: T[], item: T[]): T[] {
+    return from.filter((t) => !item.includes(t));
+  }
+
   export function removeAt<T>(from: T[], index: number): T[] {
     const result = [...from];
     result.splice(index, 1);
@@ -364,5 +376,17 @@ export namespace CollectionUtils {
     }
 
     return result;
+  }
+
+  export function areSortedInSameOrder<T, U>(coll1: T[], coll2: U[], areEqual: (a: T, b: U) => boolean): boolean {
+    if (coll1.length !== coll2.length) {
+      return false;
+    }
+    for (let i = 0; i < coll1.length; i += 1) {
+      if (!areEqual(coll1[i], coll2[i])) {
+        return false;
+      }
+    }
+    return true;
   }
 }

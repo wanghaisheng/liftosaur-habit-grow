@@ -6,6 +6,7 @@ import { IPlannerProgramExerciseSet, IPlannerProgramExerciseWarmupSet } from "./
 import { Weight } from "../../models/weight";
 import { ObjectUtils } from "../../utils/object";
 import { PlannerProgramExercise } from "./models/plannerProgramExercise";
+import { ProgramToPlanner } from "../../models/programToPlanner";
 
 export interface IPlannerEvaluatedProgramToTextOpts {
   reorder?: { dayData: Required<IDayData>; fromIndex: number; toIndex: number }[];
@@ -65,11 +66,15 @@ export class PlannerEvaluatedProgramToText {
 
     for (let weekIndex = 0; weekIndex < this.plannerProgram.weeks.length; weekIndex += 1) {
       const week = this.plannerProgram.weeks[weekIndex];
-      const plannerWeek: IPlannerProgramWeek = { name: week.name, days: [] };
+      const plannerWeek: IPlannerProgramWeek = { name: week.name, days: [], description: week.description };
       for (let dayInWeekIndex = 0; dayInWeekIndex < week.days.length; dayInWeekIndex += 1) {
         const groupedTopLines = groupedTopLineMap[weekIndex][dayInWeekIndex];
         const weekDay = week.days[dayInWeekIndex];
-        const plannerDay: IPlannerProgramDay = { name: weekDay.name, exerciseText: "" };
+        const plannerDay: IPlannerProgramDay = {
+          name: weekDay.name,
+          exerciseText: "",
+          description: weekDay.description,
+        };
         const exerciseTextArr: string[] = [];
         for (let groupIndex = 0; groupIndex < groupedTopLines.length; groupIndex += 1) {
           const group = groupedTopLines[groupIndex];
@@ -92,7 +97,7 @@ export class PlannerEvaluatedProgramToText {
                   const evalExercise = evalDay.success
                     ? evalDay.data.find((e) => e.key === exerciseLine?.value)
                     : undefined;
-                  if (descriptionIndex > 0 && evalExercise?.descriptions?.[descriptionIndex]?.isCurrent) {
+                  if (descriptionIndex > 0 && evalExercise?.descriptions.values?.[descriptionIndex]?.isCurrent) {
                     value = `// ! ${value}`;
                   } else {
                     value = `// ${value}`;
@@ -140,13 +145,12 @@ export class PlannerEvaluatedProgramToText {
                   plannerExercise += ` / ...${reusedKey}`;
                 }
                 if (evalExercise.setVariations.length > 0) {
-                  plannerExercise +=
-                    ` / ` +
-                    evalExercise.setVariations
-                      .map((v, i) =>
-                        this.setsToString(PlannerProgramExercise.sets(evalExercise, i), v.isCurrent && i !== 0)
-                      )
-                      .join(" / ");
+                  const setVarsStr = evalExercise.setVariations
+                    .map((v, i) =>
+                      this.setsToString(PlannerProgramExercise.sets(evalExercise, i), v.isCurrent && i !== 0)
+                    )
+                    .join(" / ");
+                  plannerExercise += setVarsStr ? ` / ${setVarsStr}` : "";
                 }
 
                 if (reuse && evalExercise.setVariations.length === 0) {
@@ -175,28 +179,18 @@ export class PlannerEvaluatedProgramToText {
                   addedIdMap[key] = true;
                 }
 
-                const update = evalExercise.properties.find((p) => p.name === "update");
-                if (!addedUpdateMap[key] && update != null && (update.body || update.script)) {
-                  plannerExercise += ` / update: ${update.fnName}(${update.fnArgs.join(", ")})`;
-                  if (update.body) {
-                    plannerExercise += ` { ...${update.body} }`;
-                  } else if (update.script) {
-                    plannerExercise += ` ${update.script}`;
-                  }
+                const update = evalExercise.update;
+                if (!addedUpdateMap[key] && update != null && (update.reuse?.fullName || update.script)) {
+                  plannerExercise += ` / ${ProgramToPlanner.getUpdate(evalExercise, this.settings)}`;
                   addedUpdateMap[key] = true;
                 }
 
-                const progress = evalExercise.properties.find((p) => p.name === "progress");
+                const progress = evalExercise.progress;
                 if (progress != null) {
-                  if (progress.fnName === "none") {
+                  if (progress.type === "none") {
                     plannerExercise += ` / progress: none`;
                   } else if (!addedProgressMap[key]) {
-                    plannerExercise += ` / progress: ${progress.fnName}(${progress.fnArgs.join(", ")})`;
-                    if (progress.body) {
-                      plannerExercise += ` { ...${progress.body} }`;
-                    } else if (progress.script) {
-                      plannerExercise += ` ${progress.script}`;
-                    }
+                    plannerExercise += ` / ${ProgramToPlanner.getProgress(evalExercise, this.settings)}`;
                     addedProgressMap[key] = true;
                   }
                 }
@@ -225,8 +219,8 @@ export class PlannerEvaluatedProgramToText {
         continue;
       }
       setStr += `${repRange.numberOfSets}${addQuickAddSet ? "+" : ""}x`;
-      setStr += repRange.minrep !== repRange.maxrep ? `${Math.max(0, repRange.minrep)}-` : "";
-      setStr += `${Math.max(0, repRange.maxrep)}`;
+      setStr += repRange.minrep != null ? `${Math.max(0, repRange.minrep)}-` : "";
+      setStr += `${Math.max(0, repRange.maxrep ?? 0)}`;
       setStr += repRange.isAmrap ? "+" : "";
       const weightValue =
         set.weight != null ? Weight.print(set.weight) : set.percentage != null ? `${set.percentage}%` : undefined;

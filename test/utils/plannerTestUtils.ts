@@ -1,12 +1,8 @@
-import { PlannerToProgram } from "../../src/models/plannerToProgram";
 import { Program } from "../../src/models/program";
 import { Settings } from "../../src/models/settings";
 import { PlannerProgram } from "../../src/pages/planner/models/plannerProgram";
 import { IProgram, ISettings, IPlannerProgram, IExerciseType } from "../../src/types";
-import { UidFactory } from "../../src/utils/generator";
 import { IWeightChange, ProgramExercise } from "../../src/models/programExercise";
-import { CollectionUtils } from "../../src/utils/collection";
-import { ProgramToPlanner } from "../../src/models/programToPlanner";
 import { PlannerKey } from "../../src/pages/planner/plannerKey";
 
 export interface ICompletedEntries {
@@ -14,39 +10,31 @@ export interface ICompletedEntries {
 }
 
 export class PlannerTestUtils {
-  public static get(
-    text: string,
-    settings: ISettings = Settings.build()
-  ): { program: IProgram; planner: IPlannerProgram } {
-    const planner: IPlannerProgram = { name: "MyProgram", weeks: PlannerProgram.evaluateText(text) };
-    const program = new PlannerToProgram(UidFactory.generateUid(8), 1, planner, settings).convertToProgram();
+  public static get(text: string): { program: IProgram; planner: IPlannerProgram } {
+    const planner = { name: "MyProgram", weeks: PlannerProgram.evaluateText(text) };
+    const program: IProgram = { ...Program.create("MyProgram"), planner };
     return { program, planner };
   }
 
   public static changeWeight(programText: string, cb: (weightChanges: IWeightChange[]) => IWeightChange[]): string {
-    const { planner, program } = PlannerTestUtils.get(programText);
-    const programExercise = program.exercises[0];
-    const dayData = { week: 1, day: 1, dayInWeek: 1 };
+    const { program } = PlannerTestUtils.get(programText);
     const settings = Settings.build();
-    const weightChanges = ProgramExercise.weightChanges(dayData, programExercise, program.exercises, settings);
+    const evaluatedProgram = Program.evaluate(program, settings);
+    const programExercise = evaluatedProgram.weeks[0].days[0].exercises[0];
+    const weightChanges = ProgramExercise.weightChanges(evaluatedProgram, programExercise.key);
     const newWeightChanges = cb(weightChanges);
-    const newProgramExercise = PlannerProgram.replaceWeight(programExercise, newWeightChanges);
-    const newProgram = {
-      ...program,
-      exercises: CollectionUtils.setBy(program.exercises, "id", programExercise.id, newProgramExercise),
-    };
-    const newPlanner = new ProgramToPlanner(newProgram, planner, settings, {}, {}).convertToPlanner();
-    newProgram.planner = newPlanner;
-    return PlannerProgram.generateFullText(newPlanner.weeks);
+    const newEvaluatedProgram = PlannerProgram.replaceWeight(evaluatedProgram, programExercise.key, newWeightChanges);
+    const newProgram = Program.applyEvaluatedProgram(program, newEvaluatedProgram, settings);
+    return PlannerProgram.generateFullText(newProgram.planner?.weeks || []);
   }
 
   public static changeExercise(programText: string, oldExercise: string, newExercise: IExerciseType): string {
-    const { planner } = PlannerTestUtils.get(programText);
+    const { program } = PlannerTestUtils.get(programText);
     const settings = Settings.build();
     const key = PlannerKey.fromFullName(oldExercise, settings);
-    const result = PlannerProgram.replaceExercise(planner, key, newExercise, settings);
+    const result = PlannerProgram.replaceExercise(program, key, newExercise, settings);
     if (result.success) {
-      return PlannerProgram.generateFullText(result.data.weeks);
+      return PlannerProgram.generateFullText(result.data.planner?.weeks || []);
     } else {
       throw result.error;
     }
@@ -55,16 +43,19 @@ export class PlannerTestUtils {
   public static finish(
     text: string,
     completed: ICompletedEntries,
-    settings: ISettings = Settings.build()
+    settings: ISettings = Settings.build(),
+    dayIndex?: number
   ): { program: IProgram } {
-    const { program } = PlannerTestUtils.get(text, settings);
-    const nextHistoryRecord = Program.nextProgramRecord(program, settings);
+    const { program } = PlannerTestUtils.get(text);
+    const nextHistoryRecord = Program.nextHistoryRecord(program, settings, dayIndex);
     for (let entryIndex = 0; entryIndex < completed.completedReps.length; entryIndex++) {
       for (let setIndex = 0; setIndex < completed.completedReps[entryIndex].length; setIndex++) {
         const set = nextHistoryRecord.entries?.[entryIndex]?.sets[setIndex];
         const completedReps = completed.completedReps?.[entryIndex]?.[setIndex];
         if (set != null && completedReps != null) {
           set.completedReps = completedReps;
+          set.completedWeight = set.weight;
+          set.isCompleted = true;
         }
       }
     }

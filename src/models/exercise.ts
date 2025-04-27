@@ -3520,16 +3520,23 @@ function warmup10(weight: IWeight, settings: ISettings, exerciseType?: IExercise
 }
 
 function warmup(
-  programExerciseWarmupSets: IProgramExerciseWarmupSet[]
+  programExerciseWarmupSets: IProgramExerciseWarmupSet[],
+  shouldSkipThreshold: boolean = false
 ): (weight: IWeight, settings: ISettings, exerciseType?: IExerciseType) => ISet[] {
   return (weight: IWeight, settings: ISettings, exerciseType?: IExerciseType): ISet[] => {
     return programExerciseWarmupSets.reduce<ISet[]>((memo, programExerciseWarmupSet) => {
-      if (Weight.gt(weight, programExerciseWarmupSet.threshold)) {
+      if (shouldSkipThreshold || Weight.gt(weight, programExerciseWarmupSet.threshold)) {
         const value = programExerciseWarmupSet.value;
         const unit = Equipment.getUnitOrDefaultForExerciseType(settings, exerciseType);
         const warmupWeight = typeof value === "number" ? Weight.multiply(weight, value) : value;
         const roundedWeight = Weight.roundConvertTo(warmupWeight, settings, unit, exerciseType);
-        memo.push({ reps: programExerciseWarmupSet.reps, weight: roundedWeight, originalWeight: warmupWeight });
+        memo.push({
+          id: UidFactory.generateUid(6),
+          reps: programExerciseWarmupSet.reps,
+          weight: roundedWeight,
+          originalWeight: warmupWeight,
+          isCompleted: false,
+        });
       }
       return memo;
     }, []);
@@ -3577,13 +3584,18 @@ export namespace Exercise {
     return customExercises[id] != null;
   }
 
-  export function fullName(exercise: IExercise, settings?: ISettings): string {
+  export function fullName(exercise: IExercise, settings: ISettings, label?: string): string {
+    let str: string;
     if (exercise.equipment && exercise.defaultEquipment !== exercise.equipment) {
       const equipment = equipmentName(exercise.equipment, settings?.equipment);
-      return `${exercise.name}, ${equipment}`;
+      str = `${exercise.name}, ${equipment}`;
     } else {
-      return exercise.name;
+      str = exercise.name;
     }
+    if (label) {
+      str = `${label}: ${str}`;
+    }
+    return str;
   }
 
   export function reverseName(exercise: IExercise, settings?: ISettings): string {
@@ -3667,6 +3679,19 @@ export namespace Exercise {
   export function getById(id: IExerciseId, customExercises: IAllCustomExercises): IExercise {
     const exercise = getExercise(id, customExercises);
     return { ...exercise, equipment: exercise.defaultEquipment };
+  }
+
+  export function findByNameEquipment(
+    customExercises: IAllCustomExercises,
+    name: string,
+    equipment?: string
+  ): IExercise | undefined {
+    let exerciseId = findIdByName(name, customExercises);
+    const exercise = exerciseId ? findById(exerciseId, customExercises) : undefined;
+    if (exercise == null) {
+      return undefined;
+    }
+    return { ...exercise, equipment };
   }
 
   export function findByNameAndEquipment(
@@ -3834,7 +3859,7 @@ export namespace Exercise {
   ): ISet[] {
     const ex = get(exercise, settings.exercises);
     if (programExerciseWarmupSets != null) {
-      return warmup(programExerciseWarmupSets)(weight, settings, exercise);
+      return warmup(programExerciseWarmupSets, true)(weight, settings, exercise);
     } else {
       let warmupSets = warmupEmpty(weight);
       if (ex.defaultWarmup === 10) {

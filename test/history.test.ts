@@ -31,8 +31,8 @@ describe("History", () => {
         ],
         warmupSets: [],
       };
-      const maxSet = History.getMaxSetFromEntry(entry);
-      expect(maxSet?.weight.value).to.eql(50);
+      const maxSet = History.getMaxWeightSetFromEntry(entry);
+      expect(maxSet?.weight?.value).to.eql(50);
       expect(maxSet?.completedReps).to.eql(6);
     });
   });

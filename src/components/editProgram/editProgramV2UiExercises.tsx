@@ -24,12 +24,13 @@ export function EditProgramV2UiExercises(props: IEditProgramV2UiExercisesProps):
   if (!evaluatedDay?.success) {
     return <div />;
   }
-  const lbProgram = lb<IPlannerState>().p("current").p("program");
+  const lbProgram = lb<IPlannerState>().p("current").p("program").pi("planner");
 
   return (
     <div className="w-full">
       <DraggableList
         hideBorders={true}
+        mode="vertical"
         items={evaluatedDay.data}
         element={(plannerExercise, index, handleTouchStart) => {
           const focusedKey = focusedToStr({
@@ -86,6 +87,7 @@ export function EditProgramV2UiExercises(props: IEditProgramV2UiExercisesProps):
         <LinkButton
           name="add-exercise"
           data-cy="add-exercise"
+          className="text-sm"
           onClick={() => {
             props.plannerDispatch(
               lb<IPlannerState>()

@@ -39,6 +39,7 @@ export function EditProgramV2Full(props: IEditProgramV2FullProps): JSX.Element {
       lbu<IPlannerState, typeof lensGetters>(lensGetters)
         .p("current")
         .p("program")
+        .pi("planner")
         .p("weeks")
         .recordModify((oldWeeks, getters) => {
           const text = getters.fulltext?.text;
@@ -117,7 +118,7 @@ export function EditProgramV2Full(props: IEditProgramV2FullProps): JSX.Element {
                 }
               }}
             >
-              Save
+              Apply
             </Button>
           </div>
           <div>
@@ -189,7 +190,7 @@ export function EditProgramV2Full(props: IEditProgramV2FullProps): JSX.Element {
               }
             }}
           >
-            Save
+            Apply
           </Button>
         </div>
       </div>

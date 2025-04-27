@@ -6,23 +6,21 @@ import { FooterPage } from "../../components/footerPage";
 import { ProgramPreviewPlaygroundDay } from "../../components/preview/programPreviewPlaygroundDay";
 import { TopNavMenu } from "../../components/topNavMenu";
 import { IAccount } from "../../models/account";
-import { PlannerToProgram } from "../../models/plannerToProgram";
 import { Program } from "../../models/program";
 import { Settings } from "../../models/settings";
-import { IPlannerProgram, IPlannerProgramDay, IPlannerProgramWeek, ISettings } from "../../types";
-import { UidFactory } from "../../utils/generator";
+import { IPlannerProgram, IPlannerProgramDay, IPlannerProgramWeek, IProgram, ISettings } from "../../types";
 import { useLensReducer } from "../../utils/useLensReducer";
 import { PlannerCodeBlock } from "../planner/components/plannerCodeBlock";
 import { PlannerEditorView } from "../planner/components/plannerEditorView";
 import { PlannerProgram } from "../planner/models/plannerProgram";
 import { IPlannerState } from "../planner/models/types";
 
-interface IProps {
+export interface IMainContentProps {
   client: Window["fetch"];
   account?: IAccount;
 }
 
-export function MainContent(props: IProps): JSX.Element {
+export function MainContent(props: IMainContentProps): JSX.Element {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     let source = params.get("cpgsrc");
@@ -617,8 +615,8 @@ function Bubbles(props: IBubblesProps): JSX.Element {
 function MainEditorAndPlayground(): JSX.Element {
   const initialDay: IPlannerProgramDay = {
     name: "What you'll see in the app:",
-    exerciseText: `Squat / 5x5 / progress: lp(5lb)
-Leg Curl / 3x8 / progress: dp(5lb, 8, 12)`,
+    exerciseText: `Squat / 5x5 150lb / progress: lp(5lb)
+Bench Press / 3x8 100lb / progress: dp(5lb, 8, 12)`,
   };
 
   const initialWeek: IPlannerProgramWeek = {
@@ -626,16 +624,17 @@ Leg Curl / 3x8 / progress: dp(5lb, 8, 12)`,
     days: [initialDay],
   };
 
-  const planner: IPlannerProgram = {
+  const initialPlanner: IPlannerProgram = {
     name: "My Program",
     weeks: [initialWeek],
   };
+  const initialProgram = { ...Program.create(initialPlanner.name), planner: initialPlanner };
   const settings = Settings.build();
 
   const initialState: IPlannerState = {
-    id: UidFactory.generateUid(8),
+    id: initialProgram.id,
     current: {
-      program: planner,
+      program: initialProgram,
     },
     ui: { weekIndex: 0, exerciseUi: { edit: new Set(), collapsed: new Set() } },
     history: {
@@ -644,13 +643,14 @@ Leg Curl / 3x8 / progress: dp(5lb, 8, 12)`,
     },
   };
   const [state, dispatch] = useLensReducer(initialState, {});
-  const lbDay = lb<IPlannerState>().p("current").pi("program").p("weeks").i(0).p("days").i(0);
+  const planner = state.current.program.planner!;
+  const lbDay = lb<IPlannerState>().p("current").pi("program").pi("planner").p("weeks").i(0).p("days").i(0);
   const { evaluatedWeeks, exerciseFullNames } = useMemo(
-    () => PlannerProgram.evaluate(state.current.program, settings),
+    () => PlannerProgram.evaluate(planner, settings),
     [state.current.program]
   );
   const evaluatedDay = evaluatedWeeks[0][0];
-  const text = state.current.program.weeks[0].days[0].exerciseText;
+  const text = planner.weeks[0].days[0].exerciseText;
 
   return (
     <div className="flex flex-col gap-4 mb-1 md:flex-row">
@@ -671,7 +671,7 @@ Leg Curl / 3x8 / progress: dp(5lb, 8, 12)`,
         />
       </div>
       <div className="flex-1">
-        {evaluatedDay.success && <MainPlayground key={text} planner={state.current.program} settings={settings} />}
+        {evaluatedDay.success && <MainPlayground key={text} planner={planner} settings={settings} />}
       </div>
     </div>
   );
@@ -685,40 +685,36 @@ interface IMainPlaygroundProps {
 function MainPlayground(props: IMainPlaygroundProps): JSX.Element {
   const { planner } = props;
   const [settings, setSettings] = useState(props.settings);
-  const [program, setProgram] = useState(
-    new PlannerToProgram(UidFactory.generateUid(8), 1, planner, settings).convertToProgram()
-  );
-  const [progress, setProgress] = useState(Program.nextProgramRecord(program, settings, 1, {}));
+  const [program, setProgram] = useState<IProgram>({ ...Program.create("My Program"), planner });
+  const [progress, setProgress] = useState(Program.nextHistoryRecord(program, settings, 1));
+  const evaluatedProgram = Program.evaluate(program, settings);
 
   return (
     <ProgramPreviewPlaygroundDay
-      program={Program.fullProgram(program, settings)}
-      dayIndex={0}
+      program={evaluatedProgram}
+      day={1}
       isPlayground={true}
       settings={settings}
       progress={progress}
-      staticStates={{}}
       onProgressChange={(newProgress) => {
-        console.log(newProgress);
         setProgress(newProgress);
       }}
-      onProgramChange={(newProgram) => {
+      onProgramChange={(newEvaluatedProgram) => {
+        const newProgram = Program.applyEvaluatedProgram(program, newEvaluatedProgram, settings);
         setProgram(newProgram);
-        setProgress(Program.nextProgramRecord(newProgram, settings, 1, {}));
+        setProgress(Program.nextHistoryRecord(newProgram, settings, 1));
       }}
       onSettingsChange={(newSettings) => {
         setSettings(newSettings);
-        const newProgram = new PlannerToProgram(UidFactory.generateUid(8), 1, planner, newSettings).convertToProgram();
-        setProgram(newProgram);
-        setProgress(Program.nextProgramRecord(newProgram, newSettings, 1, {}));
+        setProgress(Program.nextHistoryRecord(program, newSettings, 1));
       }}
       onFinish={() => {
-        const { program: newProgram, exerciseData } = Program.runAllFinishDayScripts(program, progress, settings, {});
+        const { program: newProgram, exerciseData } = Program.runAllFinishDayScripts(program, progress, settings);
         const newSettings = {
           ...settings,
           exerciseData: deepmerge(settings.exerciseData, exerciseData),
         };
-        const newProgress = Program.nextProgramRecord(newProgram, newSettings, 1, {});
+        const newProgress = Program.nextHistoryRecord(newProgram, newSettings, 1);
         setSettings(newSettings);
         setProgram(newProgram);
         setProgress(newProgress);

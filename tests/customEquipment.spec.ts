@@ -2,30 +2,36 @@ import { test, expect } from "@playwright/test";
 import { PlaywrightUtils, startpage } from "./playwrightUtils";
 
 test("custom equipment", async ({ page }) => {
-  await page.goto(startpage + "?skipintro=1&legacy=1&nosync=true");
+  await page.goto(startpage + "?skipintro=1&nosync=true");
   await page.getByTestId("create-program").click();
   PlaywrightUtils.disableSubscriptions(page);
 
   await page.getByTestId("modal-create-program-input").clear();
   await page.getByTestId("modal-create-program-input").type("My Program");
-  await page.getByTestId("modal-create-program-submit").click();
+  await page.getByTestId("modal-create-experimental-program-submit").click();
 
-  await page.getByText("Add New Exercise").click();
+  await page.getByTestId("editor-v2-full-program").click();
+  await page.getByTestId("editor-v2-full-program").click();
+  await PlaywrightUtils.clearCodeMirror(page, "planner-editor");
+  await PlaywrightUtils.typeCodeMirror(
+    page,
+    "planner-editor",
+    `# Week 1
+## Day 1
+Bicep Curl / 1x5 20lb / warmup: none`
+  );
 
-  await page.getByTestId("menu-item-exercise").click();
-  await page.getByTestId("modal-exercise").getByTestId("menu-item-bicep-curl-dumbbell").click();
+  await page.getByTestId("editor-v2-save-full").click();
+  await page.getByTestId("editor-save-v2-top").click();
 
-  await page.getByRole("button", { name: "Save" }).click();
-  await page.getByTestId("edit-day").click();
-  await page.getByTestId("menu-item-bicep-curl").click();
   await page.getByTestId("footer-workout").click();
   await page.getByTestId("start-workout").click();
-  await page.getByTestId("set-nonstarted").click();
+  await PlaywrightUtils.clickAll(page.getByTestId("entry-bicep-curl").getByTestId("complete-set"));
 
-  await page.getByText("Finish the workout").click();
-  await page.getByText("Continue").click();
+  await page.getByTestId("finish-workout").click();
+  await page.getByTestId("finish-day-continue").click();
 
-  await page.getByTestId("footer-settings").click();
+  await page.getByTestId("footer-me").click();
   await page.getByTestId("menu-item-available-equipment").click();
 
   await page.getByRole("button", { name: "Add New Equipment Type" }).click();
@@ -47,6 +53,7 @@ test("custom equipment", async ({ page }) => {
   await page.getByTestId("footer-workout").click();
   await page.getByTestId("start-workout").click();
 
+  await page.getByTestId("exercise-options").click();
   await page.getByTestId("exercise-edit-mode").click();
   await page.getByTestId("modal-edit-mode").getByTestId("menu-item-value-equipment").click();
   await page.getByTestId("scroll-barrel-item-boom").scrollIntoViewIfNeeded();
@@ -59,7 +66,7 @@ test("custom equipment", async ({ page }) => {
   await page.getByTestId("exercise-name").click();
   await expect(page.getByTestId("menu-item-value-equipment")).toHaveText("Boom");
 
-  await page.getByTestId("footer-settings").click();
+  await page.getByTestId("footer-me").click();
   await page.getByTestId("menu-item-available-equipment").click();
   await page.getByTestId("group-header-boom").click();
 
@@ -69,8 +76,8 @@ test("custom equipment", async ({ page }) => {
   await expect(page.getByTestId("group-header-boom")).toHaveCount(0);
 
   await page.getByTestId("footer-workout").click();
-  await page.getByTestId("start-workout").click();
 
+  await page.getByTestId("exercise-options").click();
   await page.getByTestId("exercise-edit-mode").click();
   await expect(page.getByTestId("menu-item-value-equipment")).toHaveText("");
 });
